@@ -1,0 +1,144 @@
+(Transcribed by TurboScribe. Go Unlimited to remove this message.)
+
+[Speaker 1]
+Entonces, pues digamos que el propósito es un poquito explorar qué existe. Entonces, pues tenemos que buscar esas cosas. Yo creo que nos podemos ir de pronto, como hay una cosa que se llama Federated Multi-Agent Systems, que es un poquito precisamente eso.
+
+Entonces, tratar de ver qué hay ahí para poder decir, esto claramente no existe y lo podemos hacer, o esto es lo que existe y tener como una implementación de eso, como un entendimiento claro de qué es lo que es, o digamos que cualquiera de los dos podría ser el resultado de la tesis, pero empezar por el mismo lado de ver qué es lo que está, cómo funcionan un poco estos sistemas, cómo podemos construir plataformas para hacer entrenamiento de estos agentes pensando en ambientes distribuidos, pues es básicamente la parte de Federated.
+
+Entonces, la idea es un poco de empezar a buscar la, como qué dice la literatura y eso. Yo voy a buscar, ahorita no tengo ninguna referencia específica, pero voy a buscar alguna referencia y se la mando para empezar a leer desde ahí. Y pues también usted vaya buscando cosas a ver qué hay.
+
+¿Cómo está Multi-Agents? ¿O no tanto?
+
+[Speaker 2]
+Ah, señor, perdón, la pregunta.
+
+[Speaker 1]
+¿Cómo está Multi-Agents?
+
+[Speaker 2]
+No, pues no mucho, pero me toca ponerme a explorar eso.
+
+[Speaker 1]
+Sí, también ir metiéndose en esto, pues para ver cómo funcionan los Multi-Agents, de pronto le puedo pasar el paper de Multi-Agents, pues uno que es como un survey general que dice cómo funciona, cuáles son colaborativos, competitivos, cómo son las técnicas, las técnicas para cada uno, la implementación de cada uno de esos. Y con eso le mando uno de cómo hacer este aprendizaje descentralizado. Y entonces al final, digamos que al final el objetivo es tener un sistema Multi-Agents federado, como la construcción para poder entrenarnos para un problema específico.
+
+Digamos, pues que independientemente si lo inventamos, pues que chévere si pasa, pero no es necesario para la tesis. O si es algo que ya, como nos robamos ideas de un paper, de un par de papers y dijimos, vamos a implementar esto. Como no tenemos ideas nuevas, pero la implementación sería la contribución.
+
+[Speaker 2]
+Ok.
+
+[Speaker 1]
+Y pues de ahí, digamos que la ciencia va saliendo de ahí, cómo va, estas son las características que necesitamos para implementar un sistema de agentes federado, hasta qué punto podemos hacerlo. Entonces, dependiendo del tamaño del problema, hay una relación con la cantidad de agentes que puedo tener aprendiendo, de tal forma que si tengo más agentes, realmente el rendimiento de aprendizaje en los años 90 cae, como ese tipo de cosas. Esa es la exploración que tocaría hacer.
+
+[Speaker 2]
+Ok, pues entonces, lo primero sería cómo hacer una exploración, leer literatura, como para plantear un objetivo o a lo que se quiere llegar.
+
+[Speaker 1]
+Sí, exacto. Exacto, cómo ir leyendo eso. Yo no sé si SINFO está en tema.
+
+¿Qué decía? ¿Decía algo?
+
+[Speaker 2]
+Pues está el título de Multi-Agent and Software Development, creo.
+
+[Speaker 1]
+Y nada más.
+
+[Speaker 2]
+Y creo que no decía nada más.
+
+[Speaker 1]
+No, entonces, porque una de las cosas que tenemos que hacer es enviar la propuesta. La propuesta puede ser, o sea, como algo un poco por salir del paso.
+
+[Speaker 2]
+Ok.
+
+[Speaker 1]
+Entonces, sí, por el momento creo que simplemente pensar cómo, ah, mire, estos son los sistemas Multi-Agent, queremos pensar en cosas federadas, cómo vamos a hacer la exploración para una implementación, como crear renglones, que es nuestra idea general, y mandar eso como la propuesta. O sea, ponerle su nombre a un PDF y que se vaya eso como la propuesta mientras terminamos de afinar esas cosas.
+
+[Speaker 2]
+Ok. Está bien.
+
+[Speaker 1]
+Esa es la tarea inicial por el momento. Entonces, porque toca entregar eso, salgamos de eso para poder enfocarnos de lleno en lo que queremos hacer. Entonces, yo ahorita tengo clase, pero cuando salga de clase le mando un par de referencias, como el Solví este de Multi-Agent, y un par de referencias de Multi-Agent funcionando en sistemas federados para que se llene de información con eso.
+
+[Speaker 2]
+Ok, súper bien. Pues yo también, tal vez ahorita, aprovechando que tengo tiempo, también me ponga a buscar. Pero sí quedaba la espera de las referencias para buscarlas también.
+
+[Speaker 1]
+Sí, eso es lo bueno. Y a mí se me ha olvidado, porque yo la próxima semana no estoy, entonces hablamos dentro de 15 días y miramos a ver cómo se ha leído y eso, y de ahí empezamos a tomar ruta, le parece.
+
+[Speaker 2]
+Ok, súper bien, excelente. Profe, qué pena, una preguntita más. No fui a la clase de proyecto de grado, pero un amigo fue y me dijeron que miraran si en Bloque Neón estaban con el profesor, pues que es con el que uno ya cuadró.
+
+Y yo miré...
+
+[Speaker 1]
+Sí, ustedes me mandaron el correo. A mí me dijeron que ya estaban bien.
+
+[Speaker 2]
+Ah, no, o sea, yo no le escribí, o sea, porque dije, no, pues voy a esperar la reunión para decirle que me sale con Duitama, pero pues no sé, ¿qué habría que hacer ahí? Ay, no sé, porque yo miré como el martes.
+
+[Speaker 1]
+Yo fui a preguntar y me dijeron como no, ya lo arreglamos, como si había un error, pero ya lo arreglamos.
+
+[Speaker 2]
+Ok, denme un segundo y ya confirmo. Ah, sí, ya salí en Nicolás Cardoso. Ah, listo.
+
+Ok, no, súper bien. Entonces...
+
+[Speaker 1]
+Listo, entonces con eso estamos. Yo le mando eso ahora a las 5 y dentro de 15 días miramos a ver a ver qué he aprendido de todo esto y empezamos a dar foco. Yo también voy leyendo, entonces estamos.
+
+[Speaker 2]
+Ok, súper bien. Entonces, pues dentro de 15 días hablamos de eso. Entonces, sí, quedamos en leer literatura, eso, y ya se.
+
+Bueno, y la propuesta, pero sí.
+
+[Speaker 1]
+Sí, la propuesta cuatro líneas reales.
+
+[Speaker 2]
+Ok.
+
+[Speaker 1]
+Y obviamente si tiene preguntas o algo, pues me puede escribir.
+
+[Speaker 2]
+Ok, ok, súper. También, bueno, no sé si, yo había notado esta fecha hace rato, no sé si las cambiaron, pero la propuesta está como hasta el 31 de agosto. Entonces, pues estoy como a tiempo.
+
+[Speaker 1]
+Hay tiempo, pero de una vez, o sea, tarea de 5 minutos realmente.
+
+[Speaker 2]
+Ok. Ok, pues entonces si algo... Bueno, si algo yo hago como un borrador y se lo mando a ver si le parece bien.
+
+[Speaker 1]
+No, no, no, mándelo.
+
+[Speaker 2]
+Ok. Ok, listo.
+
+[Speaker 1]
+Tiene permiso de trabajar la propuesta un máximo de 5 minutos.
+
+[Speaker 2]
+Bueno, está bien.
+
+[Speaker 1]
+A los 5 minutos la manda y con eso quedamos.
+
+[Speaker 2]
+Ok, listo. Entonces, yo creo que eso era todo.
+
+[Speaker 1]
+Listo, vale. Bueno. Hablamos entonces dentro de 15 días.
+
+[Speaker 2]
+Listo. Gracias, Nicolás. Hasta luego.
+
+Feliz día.
+
+[Speaker 1]
+Suerte.
+
+(Transcribed by TurboScribe. Go Unlimited to remove this message.)
