@@ -1,0 +1,76 @@
+Transcripción de la Reunión (Investigación IA / Aprendizaje Federado)
+
+Persona 1 (P1): [0:00] ...cosas se están se están haciendo, eh, y con eso, pues
+como para hacernos de ejemplos. Porque una cosa que de pronto sería chévere,
+pues toca ir refinando eso con el con el tiempo, pero una cosa que podría ser
+interesante es ver cómo múltiples agentes... o sea, no, cómo estos agentes...
+no, espere me organizo.
+
+[0:38] Cómo se está haciendo el entrenamiento de los agentes en diferentes
+escenarios. Como pensar en esas características que se necesitan para hacer el
+entrenamiento de los agentes. Entonces, como "listo, en el sistema de los carros
+autónomos, entonces tengo estas características". En este otro paper tienen un
+ejemplo de drones, cualquier cosa, "estas características", que son similares o
+no. Como pensar en esos escenarios a ver qué se requiere para hacer el
+entrenamiento y con eso podemos ir también destilando las estrategias que se
+están usando más comúnmente.
+
+[1:22] Yo no sé si le había dicho, pronto sí, a mí esa parte de Federated
+Learning (Aprendizaje Federado) me parece súper interesante por el aspecto
+distribuido de la estrategia por debajo. Entonces, de pronto por ahí también
+sería chévere ver si en estas estrategias multi-agente, con lo que leyó de CTE y
+DTE, ver qué tan transferibles son esas técnicas a un escenario más federado.
+Eso también podría ser interesante.
+
+[2:15] Yo creo que esas dos cosas grandes podrían ser chéveres como para un poco
+seguir leyendo, seguir aprendiendo y empezar a tratar de enfocar el problema.
+Porque sí, yo creo que eso... y con eso ya podemos empezar a hacer en el futuro
+semi-cercano experimentos como: "ah, mire, este algoritmo cómo funciona y lo
+podemos entrenar con este escenario específico", y tener los resultados y de
+pronto empezar a saltar entre escenarios y eso.
+
+[3:17] Entonces, esta semana creo que sigamos dándole a la investigación, pues
+como las cosas que está revisando, seguir leyendo, aprendiendo y empezar un
+poquito a enfocarse en esas dos cosas: qué se hace de forma distribuida para
+tener esa parte de Federated Learning y empezar a mirar más en los experimentos
+cómo los están haciendo. Ponerle atención particular a los escenarios, cómo los
+corren, cuántos agentes están corriendo, ese tipo de cosas.
+
+Persona 2 (P2): [4:03] Ok. ¿Y la idea también sería como buscar un problema como
+de ese lado o todavía no?
+
+Persona 1 (P1): [4:10] No, yo creo que todavía no. Pero yo creo que en esta
+lectura más específica, de pronto por ahí van apareciendo problemas que queramos
+resolver.
+
+Persona 2 (P2): [4:31] Ok, ok, ok.
+
+Persona 1 (P1): [4:36] Sí, yo creo que sería eso por el momento. Y la otra
+semana resolvemos y empezamos a hacer ya para tener el problema definido y eso.
+
+Persona 2 (P2): [4:54] Ok, sí, pues me parece bien. Entonces yo quedo de revisar
+eso y pues hablamos en la siguiente reunión.
+
+Persona 1 (P1): [5:05] Eso, perfecto. Ah bueno, también subí lo de la propuesta,
+pues lo que me dijo Nicolás, como algo sencillito y ya.
+
+Persona 2 (P2): [5:17] Sí, sí, lo vi, ya quedó aprobado. Entonces de cosas
+administrativas ya estamos.
+
+Persona 1 (P1): [5:25] Ok, súper. Listo, entonces yo voy a ir revisando eso.
+Cualquier cosa le aviso por correo.
+
+Persona 2 (P2): [5:34] Eso, perfecto. Listo, hablamos la otra semana entonces.
+
+Persona 1 (P1): [5:38] Ok, listo.
+
+Resumen de puntos clave:
+
+  - Temática: Entrenamiento de agentes en sistemas multi-agente (ej. carros
+    autónomos, drones).
+  - Interés técnico: Federated Learning (Aprendizaje Federado) y estrategias
+    como CTE y DTE.
+  - Siguientes pasos: Investigar cómo se ejecutan los escenarios (número de
+    agentes, configuración) y estudiar la transferencia de técnicas a entornos
+    federados.
+  - Administrativo: La propuesta de "Nicolás" ya fue aprobada.
