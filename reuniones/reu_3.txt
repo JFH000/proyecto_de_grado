@@ -1,0 +1,120 @@
+Aquí tienes el transcript detallado de la reunión entre Nicolás y el estudiante:
+
+Nicolás: ... más en la parte del aprendizaje. Pero toda esa parte de
+aseguramiento es chévere porque es como otra sección completa del grupo,
+entonces hay gente que está trabajando en esas cosas que son de seguridad y pues
+ahí puede haber una conexión interesante. Entonces yo, egoístamente, diría que
+esa es la más chévere porque esto nos puede dar cosas para seguir trabajando
+adelante después de su tesis. Yo, pensando en que se gradúe, diría que la
+primera opción es... al final en términos de código, esa es más fácil de
+construir.
+
+Estudiante: Eh, perdón Nicolás, es que como que se trabó en la última parte por
+la señal, perdón.
+
+Nicolás: Sí, no, tranquilo. Entonces lo que estaba diciendo es que esa primera
+parte de hacer Federated Learning es más conveniente en términos de
+implementación y las cosas que toca construir porque tiene... pues tiene menos
+cosas. Entonces, con respecto a su tesis, pues podría ser... no quiero decir que
+es un camino más fácil porque todo va a ser difícil, pero pues tiene ese detalle
+interesante.
+
+Estudiante: Okay.
+
+Nicolás: Entonces yo... yo iría como pensando en el futuro, cosas que hacer,
+pues yo empezaría a explorar... o pues, siguiendo con eso que acabo de decir,
+empezaría a explorar la parte del aprendizaje horizontal con alguno de estos
+ejemplos. A mí me gustan los de carros, como... pues sí.
+
+(Breve interrupción por problemas de conexión)
+
+Nicolás: Ya, aló, qué pena, esto se me cerró. Entonces, a mí me gusta ese modelo
+de los carros, me parece que es chévere, también pues tiene menos dimensiones,
+entonces es como más fácil de manejar. Yo me iría por ese, pero al final pues
+son ejemplos y es su tesis, entonces puede empezar por el que sea, pero la idea
+sería empezar a trabajar en hacer Federated Learning horizontal con uno de los
+ejemplos.
+
+Estudiante: Okay. ¿Pero cómo hace...? O sea, ¿cómo ponerme a entrenar o a
+diseñar algo para entrenar o cómo sería?
+
+Nicolás: Sí, exacto. O sea, yo lo que haría sería como buscar pues dentro del
+paper tratar de replicar la implementación con un escenario que ya exista, con
+alguno de esos dos, pero con algo claro para decir como "Ah, miren, esto
+funciona y funciona así, y tenemos estos resultados", ese tipo de cosas.
+
+Estudiante: Okay. Ese sería el siguiente paso.
+
+Nicolás: Pero no otra... perdón, no entendí. Dentro del paper está... o sea, la
+idea es implementar este aprendizaje horizontal en alguno de los ejemplos.
+Entonces en carros o en drones, el que más le guste, pero para tenerlo
+implementado. No sé si en el paper está explicado o toca darle como una buscada
+a ver.
+
+Estudiante: Okay. Pues en el de, por ejemplo, en el que yo vi de vehículos, no
+era tanto como los vehículos como que manejaban o interactuaban, sino los
+vehículos como intentando comunicarse mediante una red. Entonces era más como
+que mediante Reinforcement Learning, que fue lo que utilizaron, y lo que hacían
+era como intentar comunicarse un vehículo transmisor con uno receptor mediante
+una red. Entonces lo que el vehículo... el transmisor lo que tenía que aprender
+era pues por qué red comunicarse, qué tan fuerte... bueno, sé que no es la
+palabra correcta, pero como decían, qué tan fuerte transmite, qué tanto se puede
+llegar, como en qué medida. Era como el ejemplo que había ahí.
+
+Nicolás: Sí. Aprender de la comunicación y eso. Yo creo que podemos hacer algo
+así, me parece que es un buen primer experimento para probar, pues como meterse
+en la implementación, ver que las cosas funcionen... Está ese otro problema que
+notamos hoy indiscutiblemente, pues porque es un caso más localizado.
+
+Estudiante: Okay. Entonces podríamos tratar de hacer esa implementación como un
+primer ejercicio.
+
+Nicolás: ¿Y cómo sería hacer esa implementación? O sea, ¿es como usar Python,
+pues con código en Python o cómo sería eso?
+
+Estudiante: Pues es lo más fácil, sí. Yo creo que vamos como a hacerlo en Python
+y pues tratar de reutilizar cosas que existan, ¿cierto? Como que usted no tiene
+que hacerlo todo desde cero. Si ya hay librerías que hacen esto o una base de la
+implementación y eso, pues tomarlo.
+
+(Problemas de señal de nuevo)
+
+Nicolás: Aló... Sí, sí, ya sé. Creo que el problema soy yo, casi seguro. Pero
+entonces sí, hacer esta implementación con alguno de los ejemplos, que no sé en
+el paper hasta dónde esté explicada.
+
+Estudiante: Okay. Listo. Entonces de la implementación sería algún caso pues de
+los que he estudiado, que sea... pero que sea en un caso de horizontal Federated
+Reinforcement Learning.
+
+Nicolás: Sí, exacto. Sí, eso sería.
+
+Estudiante: Okay. Entonces bueno, pues lo que haría es... pues no sé si le
+comparto por un repo o algo de lo nuevo.
+
+Nicolás: Sí, porfa. Obviamente muy bien, lo más sano es ponerlo en un repo y si
+me lo comparte y vaya poniendo eso ahí. Yo tengo un problema las próximas dos
+semanas porque no voy a estar, me voy a ir a una conferencia. Entonces
+probablemente no me pueda... o sea, seguro dentro de ocho días no me puedo
+conectar, no, y dentro de quince tampoco. Entonces nos vemos dentro de tres
+semanas.
+
+Estudiante: Okay. Pero entonces cualquier cosa pues le puedo ir mandando los
+papers a Nicolás.
+
+Nicolás: Sí, exacto. Igual pues yo voy a estar en la civilización, entonces por
+correo podemos ir cuadrando todo lo que se necesite.
+
+Estudiante: Ah, okay, súper bien. Pues por ahora yo empezaré pues a buscar cómo
+se podría implementar eso. Pues yo no sé, pues tal vez se necesite GPU, pero
+creo que tengo acceso a Hypatia por un proyecto de una clase pasada, entonces
+creo que puedo usarlo. Entonces pues voy a mirar cómo hacer eso.
+
+Nicolás: Sí. Si no lo puede cuadrar me avisa y vemos cómo hacemos si se puede
+pedir tiempo en el servidor de la universidad.
+
+Estudiante: Listo, entonces pues yo le aviso cualquier cosa.
+
+Nicolás: Eso, perfecto. Listo. Vale, con gusto. Hablamos. Luego, chao.
+
+Estudiante: Chao.
