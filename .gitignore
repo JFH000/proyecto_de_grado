@@ -177,6 +177,9 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# Claude Code superpowers scratch state (SDD ledgers, briefs, review packages)
+.superpowers/
+
 # pytype static type analyzer
 .pytype/
 
