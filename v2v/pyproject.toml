@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "pettingzoo>=1.27.0",
+    "torch>=2.14.0",
 ]
 
 [dependency-groups]
