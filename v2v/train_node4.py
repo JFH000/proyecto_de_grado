@@ -7,9 +7,17 @@ import argparse
 import csv
 from pathlib import Path
 
+import torch
+
 from agents.d3qn_agent import D3QNAgent
 from v2v_env.env import V2VEnv
 from v2v_env.params import V2VEnvParams
+
+
+def resolve_device(requested: str) -> str:
+    if requested == "auto":
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    return requested
 
 
 def epsilon_schedule(
@@ -21,24 +29,27 @@ def epsilon_schedule(
     return start + (end - start) * (step / decay_steps)
 
 
-def make_agents(params: V2VEnvParams, seed: int, per_beta_frames: int) -> dict[str, D3QNAgent]:
+def make_agents(
+    params: V2VEnvParams, seed: int, per_beta_frames: int, device: str = "cpu"
+) -> dict[str, D3QNAgent]:
     return {
         agent_id: D3QNAgent(
             state_dim=params.state_dim,
             action_dim=params.action_space_size,
             seed=seed + i,
             per_beta_frames=per_beta_frames,
+            device=device,
         )
         for i, agent_id in enumerate(f"v2v_{i}" for i in range(params.num_v2v_pairs))
     }
 
 
 def run_training(
-    params: V2VEnvParams, episodes: int, seed: int, log_every: int = 10
+    params: V2VEnvParams, episodes: int, seed: int, log_every: int = 10, device: str = "cpu"
 ) -> list[tuple[int, str, float]]:
     env = V2VEnv(params)
     total_steps = episodes * params.max_steps
-    agents = make_agents(params, seed, per_beta_frames=total_steps)
+    agents = make_agents(params, seed, per_beta_frames=total_steps, device=device)
 
     records: list[tuple[int, str, float]] = []
     recent: dict[str, list[float]] = {agent_id: [] for agent_id in env.possible_agents}
@@ -98,10 +109,17 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--log-every", type=int, default=10)
     parser.add_argument("--output", type=Path, default=Path("runs/node4_no_fedavg_rewards.csv"))
+    parser.add_argument(
+        "--device", default="auto", choices=["auto", "cpu", "cuda"],
+        help="'auto' picks cuda if available, else cpu",
+    )
     args = parser.parse_args()
 
+    device = resolve_device(args.device)
+    print(f"Using device: {device}")
+
     params = V2VEnvParams(num_cues=15, num_v2v_pairs=5, num_power_levels=3, max_steps=200)
-    records = run_training(params, args.episodes, args.seed, args.log_every)
+    records = run_training(params, args.episodes, args.seed, args.log_every, device=device)
 
     write_records_csv(records, args.output)
     print(f"\nSaved: {args.output}")
