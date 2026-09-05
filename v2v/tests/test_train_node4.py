@@ -5,6 +5,7 @@ from v2v_env.params import V2VEnvParams
 
 from train_node4 import (
     epsilon_schedule,
+    make_agents,
     print_convergence_verdict,
     run_training,
     write_records_csv,
@@ -13,6 +14,12 @@ from train_node4 import (
 
 def make_tiny_params() -> V2VEnvParams:
     return V2VEnvParams(num_cues=4, num_v2v_pairs=2, num_power_levels=2, max_steps=5)
+
+
+def test_make_agents_forwards_agent_kwargs_overrides():
+    params = make_tiny_params()
+    agents = make_agents(params, seed=0, per_beta_frames=100, agent_kwargs={"batch_size": 4})
+    assert all(agent.batch_size == 4 for agent in agents.values())
 
 
 def test_epsilon_schedule_starts_high_and_decays_to_floor():

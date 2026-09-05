@@ -30,8 +30,13 @@ def epsilon_schedule(
 
 
 def make_agents(
-    params: V2VEnvParams, seed: int, per_beta_frames: int, device: str = "cpu"
+    params: V2VEnvParams,
+    seed: int,
+    per_beta_frames: int,
+    device: str = "cpu",
+    agent_kwargs: dict | None = None,
 ) -> dict[str, D3QNAgent]:
+    agent_kwargs = agent_kwargs or {}
     return {
         agent_id: D3QNAgent(
             state_dim=params.state_dim,
@@ -39,6 +44,7 @@ def make_agents(
             seed=seed + i,
             per_beta_frames=per_beta_frames,
             device=device,
+            **agent_kwargs,
         )
         for i, agent_id in enumerate(f"v2v_{i}" for i in range(params.num_v2v_pairs))
     }
