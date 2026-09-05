@@ -3,10 +3,10 @@ name = "v2v"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.11, <=3.14"
 dependencies = [
     "pettingzoo>=1.27.0",
-    "torch>=2.14.0",
+    "torch==2.6.0+cu118",
 ]
 
 [dependency-groups]
@@ -15,3 +15,11 @@ dev = [
     "nbconvert>=7.17.1",
     "pytest>=9.1.1",
 ]
+
+[[tool.uv.index]]
+name = "pytorch-cu118"
+url = "https://download.pytorch.org/whl/cu118"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu118" }
