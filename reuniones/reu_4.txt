@@ -1,0 +1,191 @@
+S1 (Estudiante): ... esto es que... en... estos algoritmos federados funcionan.
+S2 (Profesor): Funcionan, correcto. S1: Y esto es corriendo sobre cinco agentes
+de correo o algo así. S2: Sí, cinco agentes no más. Pues en el paper definen que
+cada agente son dos carros: un transmisor y un receptor. S1: Okay. Sí, listo.
+S2: Y pues ya lo que... ah bueno, perdón. S1: Sí, le iba a preguntar, ahí en el
+paper está también con cinco agentes, ¿cierto? S2: Sí, o sea pues en el paper lo
+comparan más como subiendo de 5 a 30 agentes para ver cómo se degrada esa
+recompensa y como la señal de cada celular. Entonces es como más esa
+comparación, pero pues inicialmente habíamos dicho que primero como probar con
+cinco agentes. S1: Sí, sí, sí. Y los números dan parecidos a los del paper. S2:
+Sí, creo que sí. Pues igual yo no hice la comparación de la subida de agentes,
+solo hasta cinco, pero más o menos sí en ese número de agentes. S1: Sí, pues
+porque si eso da en el mismo rango, entonces podemos suponer que el incremento a
+más números de agentes estaría... estaría también como comportándose bien como
+en el mismo rango, no debería tener mayor problema. S2: Sí. S1: Sí, listo. Y eso
+era con un tipo de algoritmo, ¿cierto? Porque hay varios. O sea, en el paper
+había dos, yo me acuerdo que hablamos de dos técnicas que les quiero decir
+horizontal y vertical. S2: Sí. S1: Esta es solamente una de esas. S2: Sí, solo
+horizontal, en el que cada agente pues... sí, cada agente como que explora en el
+pues en donde puede y ya después todos se unen en un solo modelo en como en esa
+parte centralizada federada y ya de ese modelo se retransmite a todos los
+agentes y pues así es como el paso a paso. S1: Sí. Sí, okay. Listo. Entonces,
+entonces el paso a seguir es pensar en extensiones, en que hay como dos formas
+de pensarlo: una sería si dentro de la implementación que tenía, o sea sobre
+esta implementación que acaba de hacer, si hay cosas que hayan sido como... o
+sea, que se sientan incómodas, como "esto funciona pero de pronto podría hacerse
+de una forma diferente". No sé en términos de... bueno, a mí se me ocurre uno
+directo. Pero como esas cosas, si hay como dentro de lo que implementó, pues
+digamos que esa era parte de la idea de implementar esto, como ver si en esas
+técnicas hay algo... hay algo interesante que se pueda... que se pueda hacer.
+S2: Pues sí, sí hay algo y pues de hecho fue como en base a ese algo fue como en
+lo que hice todo lo de ética, pues que ya nos estaban como presionando. Ese algo
+es que bueno, pues sí, en ese paper pues ellos tienen la BS que es la Base
+Station, que es donde pues se recopilan todos los modelos, se hace el como el
+promedio ponderado para tener un modelo pues como general de todos, y ahí
+también... bueno, ahí pasan dos cosas: una es esa y la otra es como el cálculo
+de la recompensa. Entonces pues algo que yo vi es que pues, bueno, en otro paper
+de hecho lo hacen pero no con federated learning ni nada de esto, es que ellos
+pues ya no tienen... usan... aplican federated pero no en un lugar centralizado
+sino como con vecinos random. Entonces lo que hacían en ese paper... el paper
+era como de clasificación de imágenes de algo de IoT, no me acuerdo bien, pero
+lo que hacían es que en vez de centralizar ese entrenamiento, en vez de
+centralizar esos datos de entrenamiento, cada... cada agente elegía como a tres
+o dos vecinos al azar y promediaba su modelo con los de ellos. Entonces pues
+esto lo hacían como en clasificación de imágenes, entonces lo que yo vi que se
+podría hacer y pues sí fue como lo que hice todo lo de ética es que... es como
+hacer algo parecido acá. Entonces que cada vehículo... pues cada par V2B, pues
+ya actualmente pues en el paper ya tiene una comunicación con vecinos a 300
+metros, entonces como que ya ese entrenamiento, ya esa fusión como de modelos ya
+no pase como centralizado sino que pase más como entre vecinos cercanos. Y como
+los autos se van moviendo, pues como que se podría ir transmitiendo. Es como mi
+hipótesis, mi teoría, pero es como a altas palabras lo que vi que se podría
+hacer. S1: Sí, exacto. Entonces ese es el punto más... más atacable. Ahí yo creo
+que hay un par de opciones que podemos hacer. Pues una idea sería esto que acaba
+de decir, que es tomar lo que estaba en este paper de imágenes y pues como
+transmitir un poco esas ideas... S2: Sí, como aplicarlo al caso de V2B. S1: ...
+eso sería una opción. Pues dependiendo de cómo sea, otra opción distinta podría
+ser utilizar estrategias de... ¿cómo se llama eso? De sistemas distribuidos en
+general, pensando en utilizar como esta misma idea con algoritmos de líderes.
+Entonces no es que yo tenga uno centralizado, o sea es más o menos como tener
+uno centralizado, pero lo que pasa es que ese centralizado es cualquiera de los
+otros agentes, ¿cierto? Es simplemente un... pues en este caso sería uno de los
+vehículos que está funcionando. Y digamos que la idea de la ventaja de esto es
+que cuando ese vehículo se daña o pues le pasa algo, simplemente desaparece de
+la red porque se movió, o sea, pensando en nuestros vehículos, entonces se alejó
+del alcance del vehículo que tenía esta información, entonces ahí pasaría a...
+entre todos los otros pasarían a encontrar un nuevo líder que sea el que tenga
+el conjunto de la información. Entonces ahí se podría reconstruir de alguna
+forma. Entonces eso es una forma de... sería una opción de hacerlo. Otra opción
+que se me ocurre, porque al final estos modelos lo que están haciendo entre
+todos es construir el modelo general en el punto central, ¿cierto? Entonces cada
+uno de los agentes empieza como a aportar lo suyo al modelo general. S2: Sí. S1:
+Y eso podríamos hacerlo de una forma distribuida sin que haya un modelo general.
+Entonces que entre todos los agentes se compartan esta información para poder
+que cada uno de los agentes construya el modelo general. Entonces eso hay una
+técnica en sistemas distribuidos, pues como una estructura de datos que se llama
+un CRDT, que es un Conflict-free Replicated Data Type, que lo que busca es hacer
+eso. Y digamos que la parte importante de este... de estos sistemas es que no
+tienen ningún tipo de sincronización. Entonces yo puedo construir estas cosas a
+prueba de fallos y pues si se va un agente no importa, y si ese mismo agente
+vuelve, actualiza toda la información que ha pasado en el... para el modelo
+general que aportaron los otros... los otros agentes, podría ser algo así.
+Obviamente ahí la limitación es que los agentes tienen que ser lo
+suficientemente grandes para poder tener todo el modelo, que de pronto es parte
+de la motivación de tener estas estaciones centralizadas dentro de los
+vehículos. Pero pues podemos suponer que, o sea, si estamos en este caso de los
+vehículos, los vehículos tienen... o sea son computadores muy grandes. Entonces
+memoria no va a ser el problema. S2: Okay. S1: Podría ser... podría ser algo
+así. S2: Okay, pero entonces... o sea sí, o sea todos van a hacer lo mismo que
+el centralizado... S1: Sí. S2: ... por lo que entiendo esa parte como de unir
+modelos. Porque pues en el paper lo que hacen también es que la recompensa pues
+es una para todos, entonces pues es para lo que dicen en el paper es que es para
+que cooperen entre ellos. Esa parte pues sí no se puede centralizar...
+descentralizar, digo. S1: Pues... pues es que depende cómo... cómo se entienda
+eso. Porque yo podría tener una política, o sea como dentro del diseño de los
+agentes, que una de las restricciones del diseño es "toca seguir esta función de
+recompensa". Y entonces si todos los agentes tienen la misma función de
+recompensa de forma independiente, el efecto sería... que es lo que dice la
+teoría, es que el efecto debería ser el mismo que si entre todos consi... o sea
+si tengo una política general para todos los agentes en conjunto. S2: Okay. Pero
+entonces, o sea la idea, pues no sé, igual también en estas semanas yo también
+he intentado entender también pues qué es un proyecto de grado, qué es una
+tesis, y por lo que entiendo es que pues tiene que haber un aporte. S1:
+Claramente. S2: Okay. Entonces en este caso la idea sería como... o sea pues
+pienso yo que esos serían como dos aportes diferentes: descentralizar el donde
+se unen los modelos y descentralizar la recompensa. Pero no sé cómo lo vea
+Nicolás. S1: Sí, totalmente. Y pues definitivamente no tocaría tratar... no
+deberíamos tratar las dos. Entonces con respecto a ese... a ese aporte, digamos
+que ese es el objetivo de una tesis, pero pues es muy difícil que en 16 semanas
+uno haga como un aporte significativo. S2: Okay. S1: Y pues de todas maneras yo
+creo que le dije al principio como vamos a explorar realmente qué es lo que hay,
+qué se puede hacer, cómo... esto va a ser un proceso más de exploración
+inicialmente. Y entonces pues ya hemos avanzado un montón, como creo que hemos
+cumplido el objetivo porque ya sabe un montón de cosas de Federated Learning que
+son importantes. Y entonces pues sería, o sea digamos que el aporte sería el
+estudio de estas cosas. Entonces si nosotros decimos como miren, tratemos de
+descentralizar el modelo de esta forma y tratamos y entre la implementación y
+todo lo que toca hacer llegamos al final del semestre y resulta que los
+resultados son malos, pues a... digamos que aporte de los chéveres no hay,
+pero... pero pues llegamos a una cosa específica. O sea como que tratamos este
+algoritmo y entendimos qué estaba pasando y podemos ver en de pronto en dónde
+están los problemas de la estrategia que cogimos, como hay unas cosas. Pero si
+en cambio dentro de 15 días después de receso usted dice como no, ya quedó
+descentralizado y todo funciona y entonces tenemos agentes y la función de
+recompensa está muchísimo mejor que en el modelo federado... pues que en el
+modelo centralizado y además hicimos la evaluación de la comunicación entre los
+agentes y tienen que usar muchísima menos comunicación y todo es maravilloso,
+pues listo. Sigamos tratando de hacer cosas, queda semestre por delante. S2:
+Okay. S1: Pero pues toca... toca empezar, toca empezar por alguna de las... de
+las cosas. Yo creo que el problema más interesante es descentralizar el modelo.
+S2: Sí. S1: Podemos empezar por ahí. S2: Sí, a mí también me parece como lo más
+interesante. Pues sí, lo que yo tenía en mente pues era esa idea que le dije a
+Nicolás, pero las que usted dice también suenan... suenan interesantes de
+implementar. S1: Sí. Sí, ahí pues ahí podría hacerse pues lo que prefiera como
+entre estas posibilidades. Sería apostarle a tratar de implementar alguna de
+ellas. Pues como entre lo que está en el paper de imágenes, esta cosa de usar
+líderes o usar CRDTs, que yo creo que en términos de complejidad podrían ser en
+ese... en ese orden. S2: Okay. S1: Simplemente pues porque lo de la imagen... lo
+de imágenes ya lo leyó, entonces pues tiene que tener por lo menos algún tipo de
+idea de cómo funciona, así no sea perfecta. Y las otras dos cosas supongo que
+toca aprenderlas todavía. S2: Sí, correcto. S1: Entonces podría... podría ser
+por ahí. De pronto empezar por ahí a ver qué pasa y si vemos los resultados y de
+pronto las mejoras no son tan chéveres y eso, tratamos otra de las estrategias.
+S2: Okay, correcto. Suena bien. S1: Sí, listo. De una. Entonces démosle a eso.
+S2: Pues una pregunta también, pues en varios de estos papers también pues
+suelen usar como mucha matemáticas, números, fórmulas. Entonces yo me preguntaba
+si... o sea sí, si es como importante tipo demostrar, o sea tipo si yo estoy
+diciendo no, pues yo en mi tesis digo no, yo creo que esto así va a hacer que
+mejore, si es importante demostrarlo o si tipo basta experimentando. S1: En
+general basta... basta experimentarlo. Digamos que si podemos demostrar cosas
+pues es tanto mejor, porque es poder decir como miren, esta es la idea, aquí
+está la demostración de la teoría y después experimentalmente también estamos
+mostrando que... que los resultados siguen la teoría. Entonces esa teoría que
+desarrollamos está totalmente bien. Pero pues en general en los artículos no se
+llega... no se llega hasta allá con la demostración, como decir como mire, estas
+son las ideas y así debería funcionar y uno muestra en simulación que las cosas
+funcionan, eso... eso es suficiente. Digamos que también en especial pues para
+una tesis. S2: Okay, excelente. Sí, era una duda porque no, el semestre pasado
+también teníamos que hacer como un mini proyecto para tópicos. Bueno, y lo que
+propusimos en conclusión, no sé, como que hablamos con... con la profe como un
+tiempo antes de la entrega y la conclusión a la que llegamos con ella es que
+nosotros no pudimos. Pero claro, eso no aporta nada. Entonces por eso me surgió
+la duda como si pues la demostración era como muy importante o pues no tanto.
+S1: Sí, no. No es importante. Obviamente si... si podemos hacerlo pues nos va a
+ir mejor en la vida. Pero... pero pues si no, no hay lío. S2: Okay, bueno. Yo no
+sé si hay como más algo de entregar en SysInfo o algo así, hace rato no reviso.
+S1: Eh... no, por el momento... por el momento no. Porque ya está lo de ética,
+¿cierto? S2: Sí, yo lo subí. Sí. S1: Sí. Eh... sí listo. Es eso de ética y ya el
+resto de las entregas viene a final de semestre. Pues para la semana 16, 17. S2:
+Ah, okay listo. Bueno, pues entonces yo exploraré esto que me dijo Nicolás pues
+para ver y pues no sé también otra cosa, uno cómo guía un proyecto de estos
+porque yo he investigado, he leído, pero realmente no es como que tenga un paso
+a paso o algo así. Entonces no sé, no entiendo muy bien cómo seguir o qué hacer
+ahorita. S1: Sí, sí, sí. No, vamos bien, porque ya estamos en la... o sea dentro
+de esa exploración pues ya tenemos estos experimentos de base que podemos
+comparar contra... contra la pues como la teoría del pues del estado del arte.
+S2: Sí. S1: Que es básicamente contra el paper. Y pues ahora de esto que hagamos
+sería compararlo contra... contra los resultados que ya tenemos. S2: Okay. S1:
+Entonces vamos bien. Científicamente estamos bien. S2: Okay. Entonces, bueno,
+entonces lo que yo voy a hacer va a ser explorar pues lo que dijo Nicolás, un
+poco más lo que yo dije y si tengo tiempo también mirar cómo implementarlo sobre
+lo que ya está. S1: Sí. Sí, y también como estas cosas de cómo funciona el
+algoritmo y los resultados pues que están hasta el momento, si quiere ir
+escribiéndolos ya para el documento final. Pues ya podría de una vez, como en
+tiempos muertos que no sé, se está ejecutando pruebas y no tiene nada que hacer,
+puede ser el momento de escribir, de empezar a escribir. Porque ese tipo de
+cosas sí o sí tienen que ir en el... en el documento. S2: Okay, entonces bueno,
+haré eso. Y ya la siguiente reunión sería hasta dentro de 15. S1: Dentro de 15
+días, sí. S2: Okay. Okay, excelente. S1: Sí. Listo, de una. Entonces pues sí, yo
+creo que estamos entonces. S2: Okay listo, bueno. Gracias Nicolás. S1: Listo,
+vale. Nos vemos dentro de 15. S2: Bueno, hasta luego. S1: Chao, hasta luego.
