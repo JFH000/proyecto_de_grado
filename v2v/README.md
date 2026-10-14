@@ -14,9 +14,9 @@ descentralizada de la tesis.
 | `agents/` | D3QN con replay priorizado, FedAvg (`federated.py`) y la política Greedy |
 | `main.py` | Entrena los K agentes con FedAvg o sin agregación (DTE) |
 | `train_greedy.py` | Corre el baseline Greedy, sin entrenamiento |
-| `analysis.py` | Métricas que se calculan sobre la corrida terminada (episodios hasta converger) |
+| `analysis.py` | Carga de las corridas del barrido y métricas que se calculan al final (episodios hasta converger) |
 | `jobs/` | Scripts de Slurm para Hypatia; los logs quedan en `jobs/logs/` |
-| `notebooks/` | `formulas_v2v_env.ipynb` (cada fórmula del entorno, verificada contra el código) y `results.ipynb` |
+| `notebooks/` | `formulas_v2v_env.ipynb` (cada fórmula del entorno, verificada contra el código), `results.ipynb` (K = 5) y `greedy.ipynb` (barrido de K) |
 | `tests/` | Pruebas con pytest |
 
 ## Instalación
@@ -106,19 +106,24 @@ entre métodos es pareada.
 Desde la raíz del repo, en Hypatia:
 
 ```bash
-make baseline-k5   # 9 trabajos: FedAvg, DTE y Greedy x semillas 0, 1, 2 (K = 5)
-make sq            # ver la cola
+make run-greedy   # 18 trabajos de CPU: Greedy x K = 5, 10, ..., 30 x semillas 0, 1, 2
+make sq           # ver la cola
 ```
 
 Cada trabajo corre `jobs/baseline.sbatch <metodo> <semilla> [episodios] [K]` y escribe
-`v2v/runs/k5/<metodo>_seed<semilla>.csv`. FedAvg y DTE piden una GPU (`-p gpu`) y Greedy
-corre en CPU (`-p medium`). El tiempo y los episodios se pueden cambiar sin editar nada:
+`v2v/runs/k<K>/<metodo>_seed<semilla>.csv` y su `.json`. El barrido, las semillas y los
+episodios se pueden achicar sin editar nada:
 
 ```bash
-make baseline-k5 LEARNER_TIME=12:00:00 BASELINE_EPISODES=2000
+make run-greedy KS="5 10" SEEDS="0" EPISODES=500
 ```
 
-Para traer los resultados a la máquina local, desde la raíz: `make pull-runs`.
+FedAvg y DTE todavía no tienen target: se lanzan con el mismo script, pidiendo GPU, por ejemplo
+`sbatch -p gpu --gres=gpu:1 --time=24:00:00 jobs/baseline.sbatch fedavg 0 4000 5` desde `v2v/`.
+
+Para traer los resultados a la máquina local, desde la raíz: `make pull-runs`. Después,
+`notebooks/greedy.ipynb` analiza el barrido de K (todas las métricas vs. K, con la Fig. 3 de
+Li et al. como referencia) y `notebooks/results.ipynb` las curvas de aprendizaje con K = 5.
 
 ## Supuestos y desviaciones respecto a Li et al. (2022)
 
