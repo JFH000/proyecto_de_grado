@@ -42,7 +42,7 @@ uv run python main.py --aggregation fedavg --episodes 4000 --seed 0 --output run
 # DTE: los mismos agentes, sin compartir pesos nunca (control)
 uv run python main.py --aggregation none --episodes 4000 --seed 0 --output runs/k5/dte_seed0.csv
 
-# Greedy: canal con menos vecinos en el slot anterior, potencia máxima
+# Greedy: canal con menos vecinos en el slot anterior (empates al azar), potencia máxima
 uv run python train_greedy.py --episodes 4000 --seed 0 --output runs/k5/greedy_seed0.csv
 ```
 
