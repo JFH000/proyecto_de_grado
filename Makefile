@@ -1,4 +1,4 @@
-.PHONY: cpu gpu sq run-greedy pull-runs paper paper-watch paper-clean
+.PHONY: cpu gpu sq run-greedy run-fedavg pull-runs paper paper-watch paper-clean
 
 cpu:
 	srun --mem=64gb --time=12:00:00 -p medium --pty bash -i
@@ -9,18 +9,38 @@ gpu:
 sq:
 	squeue -u $(USER)
 
-# Barrido de K: K pares V2V x semillas. Cada trabajo deja v2v/runs/k<K>/<metodo>_seed<semilla>.csv
-# y su .json (configuracion, maquina y tiempo). Se puede achicar sin editar nada, por ejemplo:
-#   make run-greedy KS="5 10" SEEDS="0" EPISODES=500
+# Barrido de K: K pares V2V x semillas, un trabajo por K y semilla. Cada uno deja
+# v2v/runs/k<K>/<metodo>_seed<semilla>.csv y su .json (configuracion, maquina y tiempo).
+# Antes de enviar, sincroniza el entorno una sola vez (los trabajos usan `uv run --no-sync` y no lo
+# tocan: si cada trabajo lo sincroniza, los que arrancan juntos se pisan y fallan). Salta las
+# corridas cuyo CSV ya existe, asi que volver a correr el target relanza solo las que faltan
+# (esperar a que `make sq` este vacio, o se envian dos veces las que siguen corriendo).
+# Todo se puede cambiar sin editar nada, por ejemplo:
+#   make run-fedavg KS="5 10" SEEDS="0" EPISODES=500
+#   make run-fedavg SBATCH=echo     # muestra los sbatch sin enviarlos
 KS := 5 10 15 20 25 30
 SEEDS := 0 1 2
 EPISODES := 4000
+SBATCH := sbatch
 GREEDY_TIME := 02:00:00
+# Limite de tiempo de cada trabajo de FedAvg: K x FEDAVG_MINUTES_PER_K minutos (con 90: K = 5 -> 7.5 h,
+# K = 30 -> 45 h). Estimado en la GPU de Hypatia para 4000 episodios: ~2.7 h con K = 5 y ~22 h con
+# K = 30. El CSV se escribe solo al final, asi que un trabajo que se pasa del limite se pierde entero.
+FEDAVG_MINUTES_PER_K := 90
 
-# Greedy en Hypatia: un trabajo de CPU por K y semilla (18 con los valores por defecto).
-# Correr desde la raiz del repo; `make sq` muestra la cola.
+# $(call submit,<metodo>,<opciones de sbatch>), dentro de un for con $$k y $$seed.
+define submit
+cd v2v && uv sync --frozen && for k in $(KS); do for seed in $(SEEDS); do 	out=runs/k$$k/$(1)_seed$$seed.csv; 	if [ -f $$out ]; then echo "ya existe $$out"; continue; fi; 	$(SBATCH) $(2) -J v2v-$(1)-k$$k-s$$seed jobs/baseline.sbatch $(1) $$seed $(EPISODES) $$k; done; done
+endef
+
+# Greedy: CPU (particion medium), 18 trabajos con los valores por defecto. Correr en Hypatia
+# desde la raiz del repo; `make sq` muestra la cola.
 run-greedy:
-	cd v2v && for k in $(KS); do for seed in $(SEEDS); do 		sbatch -p medium --time=$(GREEDY_TIME) -J v2v-greedy-k$$k-s$$seed 			jobs/baseline.sbatch greedy $$seed $(EPISODES) $$k; 	done; done
+	$(call submit,greedy,-p medium --time=$(GREEDY_TIME))
+
+# FedAvg: una GPU por trabajo, 18 trabajos con los valores por defecto. Correr en Hypatia.
+run-fedavg:
+	$(call submit,fedavg,-p gpu --gres=gpu:1 --time=$$((k * $(FEDAVG_MINUTES_PER_K))))
 
 # Trae v2v/runs/ de Hypatia a esta maquina (correr en la maquina local).
 HYPATIA_HOST := hypatia

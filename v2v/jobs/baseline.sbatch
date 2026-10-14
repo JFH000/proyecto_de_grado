@@ -1,8 +1,10 @@
 #!/bin/bash
-# Linea base (tarea 1.6): un metodo y una semilla por trabajo.
+# Una corrida: un metodo, una semilla y un K por trabajo.
 #   sbatch [opciones de particion] jobs/baseline.sbatch <fedavg|dte|greedy> <semilla> [episodios] [K]
-# Particion, GPU y tiempo se pasan al enviar; `make baseline-k5` (raiz del repo) lanza los 9 trabajos.
-# Salida: runs/k<K>/<metodo>_seed<semilla>.csv
+# Particion, GPU y tiempo se pasan al enviar; `make run-greedy` y `make run-fedavg` (raiz del repo)
+# lanzan el barrido de K. El entorno tiene que estar sincronizado antes (`uv sync`, que los targets
+# del Makefile ya hacen): el trabajo usa `uv run --no-sync` para no tocarlo mientras otros corren.
+# Salida: runs/k<K>/<metodo>_seed<semilla>.csv y su .json
 #SBATCH --job-name=v2v-base
 #SBATCH --mem=32gb
 #SBATCH --output=jobs/logs/slurm-%x-%j.out
@@ -11,6 +13,7 @@
 #SBATCH --mail-type=END,FAIL
 
 set -euo pipefail
+export PYTHONUNBUFFERED=1  # el progreso ("Episode ...") aparece en el .out mientras corre
 
 METHOD=${1:?falta el metodo: fedavg, dte o greedy}
 SEED=${2:?falta la semilla}
@@ -22,13 +25,13 @@ echo "metodo=${METHOD} semilla=${SEED} episodios=${EPISODES} K=${K} -> ${OUT}"
 
 case "$METHOD" in
   fedavg)
-    uv run python main.py --aggregation fedavg --seed "$SEED" --episodes "$EPISODES" \
+    uv run --no-sync python main.py --aggregation fedavg --seed "$SEED" --episodes "$EPISODES" \
       --num-v2v-pairs "$K" --device auto --output "$OUT" ;;
   dte)
-    uv run python main.py --aggregation none --seed "$SEED" --episodes "$EPISODES" \
+    uv run --no-sync python main.py --aggregation none --seed "$SEED" --episodes "$EPISODES" \
       --num-v2v-pairs "$K" --device auto --output "$OUT" ;;
   greedy)
-    uv run python train_greedy.py --seed "$SEED" --episodes "$EPISODES" \
+    uv run --no-sync python train_greedy.py --seed "$SEED" --episodes "$EPISODES" \
       --num-v2v-pairs "$K" --output "$OUT" ;;
   *)
     echo "metodo desconocido: ${METHOD} (usa fedavg, dte o greedy)" >&2

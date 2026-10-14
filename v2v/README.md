@@ -15,8 +15,9 @@ descentralizada de la tesis.
 | `main.py` | Entrena los K agentes con FedAvg o sin agregación (DTE) |
 | `train_greedy.py` | Corre el baseline Greedy, sin entrenamiento |
 | `analysis.py` | Carga de las corridas del barrido y métricas que se calculan al final (episodios hasta converger) |
+| `plots.py` | Colores, etiquetas y gráficas compartidas por los notebooks |
 | `jobs/` | Scripts de Slurm para Hypatia; los logs quedan en `jobs/logs/` |
-| `notebooks/` | `formulas_v2v_env.ipynb` (cada fórmula del entorno, verificada contra el código), `results.ipynb` (K = 5) y `greedy.ipynb` (barrido de K) |
+| `notebooks/` | `formulas_v2v_env.ipynb` (cada fórmula del entorno, verificada contra el código), `results.ipynb` (K = 5), `greedy.ipynb` y `fedavg.ipynb` (barrido de K) |
 | `tests/` | Pruebas con pytest |
 
 ## Instalación
@@ -107,23 +108,38 @@ Desde la raíz del repo, en Hypatia:
 
 ```bash
 make run-greedy   # 18 trabajos de CPU: Greedy x K = 5, 10, ..., 30 x semillas 0, 1, 2
+make run-fedavg   # 18 trabajos de GPU: lo mismo con FedAvg
 make sq           # ver la cola
 ```
 
 Cada trabajo corre `jobs/baseline.sbatch <metodo> <semilla> [episodios] [K]` y escribe
-`v2v/runs/k<K>/<metodo>_seed<semilla>.csv` y su `.json`. El barrido, las semillas y los
-episodios se pueden achicar sin editar nada:
+`v2v/runs/k<K>/<metodo>_seed<semilla>.csv` y su `.json`. Mientras corre, el progreso
+(`Episode 10/4000 | ...`) aparece en `jobs/logs/slurm-v2v-<metodo>-k<K>-s<semilla>-<id>.out`.
+
+- Los targets sincronizan el entorno una sola vez antes de enviar, y los trabajos usan
+  `uv run --no-sync`. Si cada trabajo sincronizara el entorno, los que arrancan al mismo tiempo
+  se pisarían instalando paquetes y fallarían.
+- Saltan las corridas cuyo CSV ya existe: volver a correr el target, con `make sq` vacío,
+  relanza solo las que faltan o fallaron.
+- El límite de tiempo de FedAvg crece con K (`FEDAVG_MINUTES_PER_K`, 90 min por par: 7.5 h con
+  K = 5 y 45 h con K = 30). El CSV se escribe al final, así que un trabajo que se pasa del límite
+  se pierde entero.
+
+Todo se puede cambiar sin editar nada:
 
 ```bash
-make run-greedy KS="5 10" SEEDS="0" EPISODES=500
+make run-fedavg KS="5 10" SEEDS="0" EPISODES=500
+make run-fedavg SBATCH=echo   # muestra los sbatch sin enviarlos
 ```
 
-FedAvg y DTE todavía no tienen target: se lanzan con el mismo script, pidiendo GPU, por ejemplo
-`sbatch -p gpu --gres=gpu:1 --time=24:00:00 jobs/baseline.sbatch fedavg 0 4000 5` desde `v2v/`.
+DTE todavía no tiene target: se lanza con el mismo script, por ejemplo
+`sbatch -p gpu --gres=gpu:1 --time=450 jobs/baseline.sbatch dte 0 4000 5` desde `v2v/`, después
+de un `uv sync`.
 
 Para traer los resultados a la máquina local, desde la raíz: `make pull-runs`. Después,
-`notebooks/greedy.ipynb` analiza el barrido de K (todas las métricas vs. K, con la Fig. 3 de
-Li et al. como referencia) y `notebooks/results.ipynb` las curvas de aprendizaje con K = 5.
+`notebooks/greedy.ipynb` y `notebooks/fedavg.ipynb` analizan el barrido de K (todas las métricas
+vs. K, con la Fig. 3 de Li et al. como referencia; FedAvg comparado con Greedy semilla por
+semilla) y `notebooks/results.ipynb` las curvas de aprendizaje con K = 5.
 
 ## Supuestos y desviaciones respecto a Li et al. (2022)
 
