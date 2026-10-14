@@ -26,6 +26,19 @@ from v2v_env.params import V2VEnvParams
 
 AGGREGATIONS = ("none", "fedavg")
 
+# Runs with different --seed must not share randomness. With seed + episode and seed + index,
+# run s+1 would replay run s shifted by one episode, and its agent i would be run s's agent i+1.
+SEED_STRIDE = 1_000_000
+
+
+def episode_seed(seed: int, episode: int) -> int:
+    """Env layout seed of one episode. Every method run with the same seed sees the same layouts."""
+    return seed * SEED_STRIDE + episode
+
+
+def agent_seed(seed: int, index: int) -> int:
+    return seed * SEED_STRIDE + index
+
 
 class EpisodeRecord(NamedTuple):
     episode: int
@@ -97,7 +110,7 @@ def make_agents(
         agent_id: D3QNAgent(
             state_dim=params.state_dim,
             action_dim=params.action_space_size,
-            seed=seed + i,
+            seed=agent_seed(seed, i),
             per_beta_frames=per_beta_frames,
             device=device,
             **agent_kwargs,
@@ -130,7 +143,7 @@ def run_training(
     global_step = 0
 
     for ep in range(episodes):
-        obs, _ = env.reset(seed=seed + ep)
+        obs, _ = env.reset(seed=episode_seed(seed, ep))
         episode = EpisodeAccumulator(env.possible_agents)
 
         while env.agents:

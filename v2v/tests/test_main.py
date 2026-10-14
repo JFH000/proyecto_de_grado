@@ -32,6 +32,14 @@ def test_make_agents_forwards_agent_kwargs_overrides():
     assert all(agent.batch_size == 4 for agent in agents.values())
 
 
+def test_agents_of_consecutive_seeds_start_from_different_weights():
+    # With agent seed = seed + index, agent v2v_1 of seed 0 and agent v2v_0 of seed 1 would be clones.
+    params = make_tiny_params()
+    a = make_agents(params, seed=0, per_beta_frames=100)["v2v_1"]
+    b = make_agents(params, seed=1, per_beta_frames=100)["v2v_0"]
+    assert any(not torch.equal(p, q) for p, q in zip(a.online.parameters(), b.online.parameters()))
+
+
 def test_run_training_returns_one_record_per_episode_per_agent():
     params = make_tiny_params()
     records, _ = run_training(params, episodes=3, seed=0, fedavg_every=2, log_every=100)

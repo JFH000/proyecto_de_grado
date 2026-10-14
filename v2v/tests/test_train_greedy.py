@@ -31,6 +31,15 @@ def test_run_greedy_records_carry_qos_metrics():
         assert 0.0 <= r.outage_rate <= 1.0
 
 
+def test_consecutive_seeds_do_not_replay_the_same_episodes():
+    # With env seed = seed + episode, run seed=0 episode 1 and run seed=1 episode 0 would share
+    # a layout and, Greedy being deterministic, the same reward.
+    params = make_tiny_params()
+    run0 = run_greedy(params, episodes=2, seed=0)
+    run1 = run_greedy(params, episodes=1, seed=1)
+    assert [r.reward for r in run0 if r.episode == 1] != [r.reward for r in run1 if r.episode == 0]
+
+
 def test_run_greedy_is_deterministic_given_same_seed():
     params = make_tiny_params()
     first = run_greedy(params, episodes=2, seed=7)

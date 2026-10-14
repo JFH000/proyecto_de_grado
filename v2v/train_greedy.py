@@ -9,7 +9,7 @@ import argparse
 from pathlib import Path
 
 from agents.greedy_policy import greedy_action
-from main import EpisodeAccumulator, EpisodeRecord, write_records_csv
+from main import EpisodeAccumulator, EpisodeRecord, episode_seed, write_records_csv
 from v2v_env.env import V2VEnv
 from v2v_env.params import V2VEnvParams
 
@@ -19,7 +19,7 @@ def run_greedy(params: V2VEnvParams, episodes: int, seed: int) -> list[EpisodeRe
     records: list[EpisodeRecord] = []
 
     for ep in range(episodes):
-        obs, _ = env.reset(seed=seed + ep)
+        obs, _ = env.reset(seed=episode_seed(seed, ep))
         episode = EpisodeAccumulator(env.possible_agents)
 
         while env.agents:
