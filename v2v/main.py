@@ -7,11 +7,15 @@ online-network weights are uploaded, averaged weighted by the minibatch size
 it trained on since the last round, and broadcast back (agents/federated.py).
 `--aggregation none`: the agents never share weights -- pure DTE, the control
 that shows what federation adds.
+
+Writes one CSV row per episode and agent: the summed reward plus the per-slot
+QoS metrics V2VEnv.step reports, averaged over the episode (EpisodeRecord).
 """
 
 import argparse
 import csv
 from pathlib import Path
+from typing import NamedTuple
 
 import torch
 
@@ -21,6 +25,49 @@ from v2v_env.env import V2VEnv
 from v2v_env.params import V2VEnvParams
 
 AGGREGATIONS = ("none", "fedavg")
+
+
+class EpisodeRecord(NamedTuple):
+    episode: int
+    agent: str
+    reward: float  # summed over the episode's slots
+    cue_rate_mbps: float  # mean over slots of the cell's mean CUE rate
+    v2v_delay_ms: float  # mean over slots of this pair's queueing delay
+    outage_rate: float  # fraction of slots in which this pair failed the reliability constraint
+
+
+class EpisodeAccumulator:
+    """Collects one episode's per-slot rewards and env.step infos into one EpisodeRecord per agent."""
+
+    def __init__(self, agent_ids: list[str]):
+        self.slots = 0
+        self.totals = {
+            agent_id: {"reward": 0.0, "cue_rate_mbps": 0.0, "v2v_delay_ms": 0.0, "outages": 0}
+            for agent_id in agent_ids
+        }
+
+    def add(self, rewards: dict[str, float], infos: dict[str, dict]) -> None:
+        self.slots += 1
+        for agent_id, total in self.totals.items():
+            info = infos[agent_id]
+            total["reward"] += rewards[agent_id]
+            total["cue_rate_mbps"] += info["cue_rate_mbps"]
+            total["v2v_delay_ms"] += info["v2v_delay_ms"]
+            total["outages"] += info["outage"]
+
+    def records(self, episode: int) -> list[EpisodeRecord]:
+        n = max(1, self.slots)
+        return [
+            EpisodeRecord(
+                episode,
+                agent_id,
+                total["reward"],
+                total["cue_rate_mbps"] / n,
+                total["v2v_delay_ms"] / n,
+                total["outages"] / n,
+            )
+            for agent_id, total in self.totals.items()
+        ]
 
 
 def resolve_device(requested: str) -> str:
@@ -68,7 +115,7 @@ def run_training(
     device: str = "cpu",
     agent_kwargs: dict | None = None,
     aggregation: str = "fedavg",
-) -> tuple[list[tuple[int, str, float]], dict[str, D3QNAgent]]:
+) -> tuple[list[EpisodeRecord], dict[str, D3QNAgent]]:
     if aggregation not in AGGREGATIONS:
         raise ValueError(f"aggregation must be one of {AGGREGATIONS}, got {aggregation!r}")
     env = V2VEnv(params)
@@ -77,24 +124,24 @@ def run_training(
         params, seed, per_beta_frames=total_steps, device=device, agent_kwargs=agent_kwargs
     )
 
-    records: list[tuple[int, str, float]] = []
+    records: list[EpisodeRecord] = []
     recent: dict[str, list[float]] = {agent_id: [] for agent_id in env.possible_agents}
     sample_counts = {agent_id: 0.0 for agent_id in env.possible_agents}
     global_step = 0
 
     for ep in range(episodes):
         obs, _ = env.reset(seed=seed + ep)
-        episode_reward = {agent_id: 0.0 for agent_id in env.possible_agents}
+        episode = EpisodeAccumulator(env.possible_agents)
 
         while env.agents:
             eps = epsilon_schedule(global_step, total_steps)
             actions = {a: agents[a].select_action(obs[a], eps) for a in env.agents}
-            next_obs, rewards, _, _, _ = env.step(actions)
+            next_obs, rewards, _, _, infos = env.step(actions)
             for a in env.possible_agents:
                 agents[a].store_transition(obs[a], actions[a], rewards[a], next_obs[a])
                 if agents[a].learn() is not None:
                     sample_counts[a] += agents[a].batch_size
-                episode_reward[a] += rewards[a]
+            episode.add(rewards, infos)
             obs = next_obs
             global_step += 1
 
@@ -106,9 +153,9 @@ def run_training(
                 fedavg_round(agents, sample_counts)
                 sample_counts = {agent_id: 0.0 for agent_id in env.possible_agents}
 
-        for a, r in episode_reward.items():
-            records.append((ep, a, r))
-            recent[a].append(r)
+        for record in episode.records(ep):
+            records.append(record)
+            recent[record.agent].append(record.reward)
 
         if (ep + 1) % log_every == 0:
             summary = ", ".join(f"{a}={sum(rs) / len(rs):.3f}" for a, rs in recent.items())
@@ -118,18 +165,18 @@ def run_training(
     return records, agents
 
 
-def write_records_csv(records: list[tuple[int, str, float]], output_path: Path) -> None:
+def write_records_csv(records: list[EpisodeRecord], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["episode", "agent", "reward"])
+        writer.writerow(EpisodeRecord._fields)
         writer.writerows(records)
 
 
-def print_convergence_verdict(records: list[tuple[int, str, float]], episodes: int) -> None:
+def print_convergence_verdict(records: list[EpisodeRecord], episodes: int) -> None:
     by_agent: dict[str, list[float]] = {}
-    for _ep, agent_id, reward in sorted(records, key=lambda r: r[0]):
-        by_agent.setdefault(agent_id, []).append(reward)
+    for record in sorted(records, key=lambda r: r.episode):
+        by_agent.setdefault(record.agent, []).append(record.reward)
 
     window = max(1, episodes // 10)
     for agent_id, rewards in by_agent.items():

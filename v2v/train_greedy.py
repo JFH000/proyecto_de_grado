@@ -2,33 +2,32 @@
 resource-allocation environment: always picks the channel with the fewest
 co-channel V2V neighbors and transmits at maximum power (agents/greedy_policy.py).
 No training happens here -- this is the comparison point for main.py's FedAvg run.
+The CSV has the same columns as main.py's (EpisodeRecord).
 """
 
 import argparse
 from pathlib import Path
 
 from agents.greedy_policy import greedy_action
-from main import write_records_csv
+from main import EpisodeAccumulator, EpisodeRecord, write_records_csv
 from v2v_env.env import V2VEnv
 from v2v_env.params import V2VEnvParams
 
 
-def run_greedy(params: V2VEnvParams, episodes: int, seed: int) -> list[tuple[int, str, float]]:
+def run_greedy(params: V2VEnvParams, episodes: int, seed: int) -> list[EpisodeRecord]:
     env = V2VEnv(params)
-    records: list[tuple[int, str, float]] = []
+    records: list[EpisodeRecord] = []
 
     for ep in range(episodes):
         obs, _ = env.reset(seed=seed + ep)
-        episode_reward = {agent_id: 0.0 for agent_id in env.possible_agents}
+        episode = EpisodeAccumulator(env.possible_agents)
 
         while env.agents:
             actions = {a: greedy_action(obs[a], params) for a in env.agents}
-            obs, rewards, _, _, _ = env.step(actions)
-            for a in env.possible_agents:
-                episode_reward[a] += rewards[a]
+            obs, rewards, _, _, infos = env.step(actions)
+            episode.add(rewards, infos)
 
-        for a, r in episode_reward.items():
-            records.append((ep, a, r))
+        records.extend(episode.records(ep))
 
     return records
 

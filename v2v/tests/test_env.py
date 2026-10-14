@@ -138,6 +138,52 @@ def test_observations_lie_in_observation_space():
         assert env.observation_space(agent).contains(agent_obs)
 
 
+def test_step_info_reports_delay_from_queue_backlog():
+    # Zero power: no pair transmits. Slot 1 starts with an empty queue -> 0 ms; slot 2 starts
+    # with tau * lambda = 1000 bits waiting -> 1000 bits / 1e6 bps = 1 ms (Little's law).
+    env = make_env()
+    env.reset(seed=0)
+    zero_power = {agent: 0 for agent in env.agents}
+    _, _, _, _, infos = env.step(zero_power)
+    assert all(info["v2v_delay_ms"] == 0.0 for info in infos.values())
+    _, _, _, _, infos = env.step(zero_power)
+    assert all(np.isclose(info["v2v_delay_ms"], 1.0) for info in infos.values())
+
+
+def test_step_info_flags_outage_only_where_reliability_constraint_fails():
+    # gamma_o = -50 dB and p_o = 0.5 give a threshold of ~1.4e-5 that any transmitting pair
+    # clears; a pair at zero power has expected SINR 0 and always fails it.
+    env = make_env(sinr_threshold_db=-50.0, outage_probability_threshold=0.5)
+    env.reset(seed=0)
+    levels = env.params.num_power_levels + 1
+    actions = {"v2v_0": 0 * levels + 0, "v2v_1": 1 * levels + 2, "v2v_2": 2 * levels + 2}
+    _, _, _, _, infos = env.step(actions)
+    assert infos["v2v_0"]["outage"] is True
+    assert infos["v2v_1"]["outage"] is False
+    assert infos["v2v_2"]["outage"] is False
+
+
+def test_step_info_reports_one_shared_cue_rate_in_mbps():
+    # Silent V2V pairs leave the CUEs with noise only: a few Mbps on a 1 MHz channel (bps would be ~1e6+).
+    env = V2VEnv(V2VEnvParams(num_cues=15, num_v2v_pairs=5, num_power_levels=3))
+    env.reset(seed=0)
+    _, _, _, _, infos = env.step({agent: 0 for agent in env.agents})
+    rates = {info["cue_rate_mbps"] for info in infos.values()}
+    assert len(rates) == 1
+    assert 1.0 < rates.pop() < 50.0
+
+
+def test_v2v_interference_lowers_reported_cue_rate():
+    # Same seed -> same fading draws; only the V2V actions differ.
+    params = V2VEnvParams(num_cues=4, num_v2v_pairs=3, num_power_levels=2)
+    silent, loud = V2VEnv(params), V2VEnv(params)
+    silent.reset(seed=5)
+    loud.reset(seed=5)
+    _, _, _, _, info_silent = silent.step({agent: 0 for agent in silent.agents})
+    _, _, _, _, info_loud = loud.step({agent: 2 for agent in loud.agents})  # all on channel 0, max power
+    assert info_loud["v2v_0"]["cue_rate_mbps"] < info_silent["v2v_0"]["cue_rate_mbps"]
+
+
 def test_reward_stays_on_the_scale_of_the_penalty():
     # With dimensionless (threshold-relative) terms the reward per slot is tens, not the
     # ~3e7 it reaches when the CUE-rate margin is summed in raw bps.

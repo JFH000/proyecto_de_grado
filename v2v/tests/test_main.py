@@ -7,6 +7,8 @@ import torch
 from v2v_env.params import V2VEnvParams
 
 from main import (
+    EpisodeAccumulator,
+    EpisodeRecord,
     epsilon_schedule,
     make_agents,
     print_convergence_verdict,
@@ -34,13 +36,49 @@ def test_run_training_returns_one_record_per_episode_per_agent():
     params = make_tiny_params()
     records, _ = run_training(params, episodes=3, seed=0, fedavg_every=2, log_every=100)
     assert len(records) == 3 * params.num_v2v_pairs
-    assert {ep for ep, _, _ in records} == {0, 1, 2}
+    assert {r.episode for r in records} == {0, 1, 2}
 
 
 def test_run_training_rewards_are_finite():
     params = make_tiny_params()
     records, _ = run_training(params, episodes=2, seed=1, fedavg_every=2, log_every=100)
-    assert all(math.isfinite(r) for _, _, r in records)
+    assert all(math.isfinite(r.reward) for r in records)
+
+
+def test_run_training_records_carry_qos_metrics():
+    params = make_tiny_params()
+    records, _ = run_training(params, episodes=2, seed=1, fedavg_every=2, log_every=100)
+    for r in records:
+        assert r.cue_rate_mbps > 0
+        assert r.v2v_delay_ms >= 0
+        assert 0.0 <= r.outage_rate <= 1.0
+
+
+def slot_info(cue_rate_mbps: float, v2v_delay_ms: float, outage: bool) -> dict:
+    # Same keys V2VEnv.step puts in each agent's info.
+    return {
+        "channel": 0,
+        "power_w": 0.2,
+        "cue_rate_mbps": cue_rate_mbps,
+        "v2v_delay_ms": v2v_delay_ms,
+        "outage": outage,
+    }
+
+
+def test_episode_accumulator_sums_reward_and_averages_metrics():
+    acc = EpisodeAccumulator(["v2v_0", "v2v_1"])
+    acc.add(
+        {"v2v_0": 1.0, "v2v_1": 1.0},
+        {"v2v_0": slot_info(8.0, 0.0, True), "v2v_1": slot_info(8.0, 4.0, False)},
+    )
+    acc.add(
+        {"v2v_0": 3.0, "v2v_1": 3.0},
+        {"v2v_0": slot_info(6.0, 2.0, False), "v2v_1": slot_info(6.0, 0.0, False)},
+    )
+    assert acc.records(episode=7) == [
+        EpisodeRecord(7, "v2v_0", 4.0, 7.0, 1.0, 0.5),
+        EpisodeRecord(7, "v2v_1", 4.0, 7.0, 2.0, 0.0),
+    ]
 
 
 def test_run_training_synchronizes_agents_online_weights():
@@ -83,17 +121,17 @@ def test_run_training_rejects_unknown_aggregation():
 
 
 def test_write_records_csv_round_trips(tmp_path):
-    records = [(0, "v2v_0", 1.5), (0, "v2v_1", -2.0)]
+    records = [EpisodeRecord(0, "v2v_0", 1.5, 7.25, 0.5, 0.25), EpisodeRecord(0, "v2v_1", -2.0, 7.25, 0.0, 1.0)]
     output_path = tmp_path / "rewards.csv"
     write_records_csv(records, output_path)
     with output_path.open() as f:
         rows = list(csv.reader(f))
-    assert rows[0] == ["episode", "agent", "reward"]
-    assert rows[1] == ["0", "v2v_0", "1.5"]
+    assert rows[0] == ["episode", "agent", "reward", "cue_rate_mbps", "v2v_delay_ms", "outage_rate"]
+    assert rows[1] == ["0", "v2v_0", "1.5", "7.25", "0.5", "0.25"]
 
 
 def test_print_convergence_verdict_mentions_every_agent(capsys):
-    records = [(ep, "v2v_0", float(ep)) for ep in range(10)] + [(ep, "v2v_1", float(ep)) for ep in range(10)]
+    records = [EpisodeRecord(ep, agent, float(ep), 7.0, 0.0, 0.0) for agent in ("v2v_0", "v2v_1") for ep in range(10)]
     print_convergence_verdict(records, episodes=10)
     captured = capsys.readouterr()
     assert "v2v_0" in captured.out

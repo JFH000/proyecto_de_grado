@@ -189,6 +189,11 @@ class V2VEnv(ParallelEnv):
             penalty=self.params.penalty_constant,
         )
 
+        # QoS metrics for logging, taken from the same quantities the reward judged:
+        # delay via Little's law on Q_k^t (so delay > D_max <=> Q_k^t > Q_max), outage where Eq. 15 fails.
+        cue_rate_mbps = float(cue_rates.mean() / 1e6)
+        v2v_delay_ms = self._queue / self.params.v2v_arrival_rate_bps * 1e3
+
         self._queue = np.array(
             [
                 physics.update_queue(
@@ -206,7 +211,13 @@ class V2VEnv(ParallelEnv):
         truncated = self._step_count >= self.params.max_steps
         truncations = {agent: truncated for agent in self.possible_agents}
         infos = {
-            agent: {"channel": int(channels[i]), "power_w": float(powers_w[i])}
+            agent: {
+                "channel": int(channels[i]),
+                "power_w": float(powers_w[i]),
+                "cue_rate_mbps": cue_rate_mbps,
+                "v2v_delay_ms": float(v2v_delay_ms[i]),
+                "outage": bool(reliability_margins[i] < 0),
+            }
             for i, agent in enumerate(self.possible_agents)
         }
 

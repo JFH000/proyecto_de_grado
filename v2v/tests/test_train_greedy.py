@@ -13,13 +13,22 @@ def test_run_greedy_returns_one_record_per_episode_per_agent():
     params = make_tiny_params()
     records = run_greedy(params, episodes=3, seed=0)
     assert len(records) == 3 * params.num_v2v_pairs
-    assert {ep for ep, _, _ in records} == {0, 1, 2}
+    assert {r.episode for r in records} == {0, 1, 2}
 
 
 def test_run_greedy_rewards_are_finite():
     params = make_tiny_params()
     records = run_greedy(params, episodes=2, seed=1)
-    assert all(math.isfinite(r) for _, _, r in records)
+    assert all(math.isfinite(r.reward) for r in records)
+
+
+def test_run_greedy_records_carry_qos_metrics():
+    params = make_tiny_params()
+    records = run_greedy(params, episodes=2, seed=1)
+    for r in records:
+        assert r.cue_rate_mbps > 0
+        assert r.v2v_delay_ms >= 0
+        assert 0.0 <= r.outage_rate <= 1.0
 
 
 def test_run_greedy_is_deterministic_given_same_seed():
