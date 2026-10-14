@@ -191,6 +191,16 @@ def test_step_info_reports_neighbors_within_the_neighbor_radius():
         assert [info["neighbors"] for info in infos.values()] == [expected] * 3
 
 
+def test_neighbor_mask_is_symmetric_and_agrees_with_the_reported_neighbors():
+    env = V2VEnv(V2VEnvParams(num_cues=4, num_v2v_pairs=6, num_power_levels=2))
+    env.reset(seed=3)
+    mask = env.neighbor_mask
+    assert mask.shape == (6, 6)
+    assert (mask == mask.T).all() and not mask.diagonal().any()
+    _, _, _, _, infos = env.step({agent: 0 for agent in env.agents})
+    assert [info["neighbors"] for info in infos.values()] == mask.sum(axis=1).tolist()
+
+
 def test_step_info_flags_co_channel_only_between_transmitting_pairs():
     env = make_env()
     env.reset(seed=0)

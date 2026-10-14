@@ -6,7 +6,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from plots import fedavg_models_per_episode, log_y, plot_vs_k
+from plots import fedavg_models_per_episode, gossip_models_per_episode, log_y, plot_vs_k
 
 
 def make_summary(rows: dict[str, list[float]]) -> pd.DataFrame:
@@ -53,3 +53,8 @@ def test_log_y_keeps_a_linear_axis_within_one_decade():
     log_y(ax)
     assert ax.get_yscale() == "linear"
     plt.close(fig)
+
+
+def test_gossip_models_per_episode_is_one_transfer_per_neighbor_per_round():
+    # 4 rounds per 200-slot episode; each agent pulls one model from each neighbor.
+    assert gossip_models_per_episode(k=10, mean_neighbors=2.5) == 100

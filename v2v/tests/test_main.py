@@ -21,8 +21,8 @@ from main import (
 )
 
 
-def make_tiny_params() -> V2VEnvParams:
-    return V2VEnvParams(num_cues=4, num_v2v_pairs=2, num_power_levels=2, max_steps=5)
+def make_tiny_params(**overrides) -> V2VEnvParams:
+    return V2VEnvParams(**{"num_cues": 4, "num_v2v_pairs": 2, "num_power_levels": 2, "max_steps": 5, **overrides})
 
 
 def test_epsilon_schedule_starts_high_and_decays_to_floor():
@@ -198,6 +198,48 @@ def test_run_training_without_aggregation_moves_no_models():
         aggregation="none",
     )
     assert all((r.comm_models, r.comm_bytes, r.comm_max_load) == (0, 0, 0) for r in records)
+
+
+def test_gossip_with_everyone_in_range_moves_one_model_per_ordered_pair_and_syncs_agents():
+    # A 1000 km radius makes the 2 pairs neighbors: each round each sends its model to the other
+    # (2 transfers, 2 per node), and averaging both like FedAvg leaves them identical.
+    params = make_tiny_params(neighbor_radius_m=1e6)
+    records, agents = run_training(
+        params, episodes=2, seed=0, fedavg_every=1, log_every=100, agent_kwargs={"batch_size": 2}, aggregation="gossip"
+    )
+    for record in (r for r in records if r.episode == 1):
+        assert record.comm_models == 10  # 5 rounds x 2 transfers
+        assert record.comm_max_load == 10
+        assert record.neighbors == 1.0
+    for p_a, p_b in zip(agents["v2v_0"].online.parameters(), agents["v2v_1"].online.parameters()):
+        assert torch.equal(p_a, p_b)
+
+
+def test_gossip_without_neighbors_moves_nothing_and_behaves_like_dte():
+    params = make_tiny_params(neighbor_radius_m=0.0)
+    common = dict(episodes=2, seed=0, fedavg_every=1, log_every=100, agent_kwargs={"batch_size": 2})
+    gossip, gossip_agents = run_training(params, aggregation="gossip", **common)
+    dte, dte_agents = run_training(params, aggregation="none", **common)
+    assert all(r.comm_models == 0 for r in gossip)
+    assert [r.reward for r in gossip] == [r.reward for r in dte]
+    for p_g, p_d in zip(gossip_agents["v2v_0"].online.parameters(), dte_agents["v2v_0"].online.parameters()):
+        assert torch.equal(p_g, p_d)
+
+
+def test_gossip_neighbors_caps_the_models_each_agent_pulls():
+    # 3 pairs all in range, S = 1: each agent pulls one model per round -> 3 transfers per round.
+    params = make_tiny_params(num_v2v_pairs=3, neighbor_radius_m=1e6)
+    records, _ = run_training(
+        params,
+        episodes=2,
+        seed=0,
+        fedavg_every=1,
+        log_every=100,
+        agent_kwargs={"batch_size": 2},
+        aggregation="gossip",
+        gossip_neighbors=1,
+    )
+    assert all(r.comm_models == 15 for r in records if r.episode == 1)  # 5 rounds x 3
 
 
 def test_dte_agents_drift_further_apart_than_fedavg_agents():

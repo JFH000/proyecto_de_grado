@@ -55,6 +55,12 @@ class V2VEnv(ParallelEnv):
     def action_space(self, agent):
         return Discrete(self.params.action_space_size)
 
+    @property
+    def neighbor_mask(self) -> np.ndarray:
+        """mask[i, j]: pair j's transmitter is within the neighbor radius of pair i's (K x K,
+        symmetric, False on the diagonal). Fixed within an episode; gossip aggregates over it."""
+        return self._neighbor_mask
+
     def _decode_action(self, action_id: int) -> tuple[int, int]:
         num_power_levels = self.params.num_power_levels + 1
         channel_idx = action_id // num_power_levels

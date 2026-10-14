@@ -124,3 +124,11 @@ def log_y(ax) -> None:
 def fedavg_models_per_episode(k: int, slots_per_episode: int = 200, aggregate_every: int = 50) -> int:
     """Model transfers FedAvg should log per episode once every agent learns: 2K per round."""
     return 2 * k * (slots_per_episode // aggregate_every)
+
+
+def gossip_models_per_episode(
+    k: int, mean_neighbors: float, slots_per_episode: int = 200, aggregate_every: int = 50
+) -> float:
+    """Model transfers gossip should log per episode when every agent pulls from all its neighbors:
+    one per neighbor per round, K x (mean neighbors) per round."""
+    return k * mean_neighbors * (slots_per_episode // aggregate_every)

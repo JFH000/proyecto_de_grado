@@ -2,9 +2,13 @@
 2022, "Federated Multi-Agent Deep RL for Resource Allocation of V2V
 Communications").
 
-`--aggregation fedavg` (default): every `--fedavg-every` slots, each agent's
+`--aggregation fedavg` (default): every `--aggregate-every` slots, each agent's
 online-network weights are uploaded, averaged weighted by the minibatch size
 it trained on since the last round, and broadcast back (agents/federated.py).
+`--aggregation gossip`: the thesis proposal. At the same instants, each agent
+averages its weights with those of the pairs within the 300 m neighbor radius,
+without the BS (agents/gossip.py); `--gossip-neighbors S` pulls at most S random
+ones per round.
 `--aggregation none`: the agents never share weights -- pure DTE, the control
 that shows what federation adds.
 
@@ -23,14 +27,16 @@ import time
 from pathlib import Path
 from typing import NamedTuple
 
+import numpy as np
 import torch
 
 from agents.d3qn_agent import D3QNAgent
 from agents.federated import fedavg_node_loads, fedavg_round, model_num_bytes, weight_dispersion
+from agents.gossip import gossip_round
 from v2v_env.env import V2VEnv
 from v2v_env.params import V2VEnvParams
 
-AGGREGATIONS = ("none", "fedavg")
+AGGREGATIONS = ("none", "fedavg", "gossip")
 
 # Runs with different --seed must not share randomness. With seed + episode and seed + index,
 # run s+1 would replay run s shifted by one episode, and its agent i would be run s's agent i+1.
@@ -178,10 +184,14 @@ def run_training(
     device: str = "cpu",
     agent_kwargs: dict | None = None,
     aggregation: str = "fedavg",
+    gossip_neighbors: int | None = None,
 ) -> tuple[list[EpisodeRecord], dict[str, D3QNAgent]]:
     if aggregation not in AGGREGATIONS:
         raise ValueError(f"aggregation must be one of {AGGREGATIONS}, got {aggregation!r}")
     env = V2VEnv(params)
+    # Draws the random neighbor subsets of --gossip-neighbors; spawned so it never coincides
+    # with the env's layout seeds or the agents' own streams.
+    gossip_rng = np.random.default_rng(np.random.SeedSequence(seed).spawn(1)[0])
     total_steps = episodes * params.max_steps
     agents = make_agents(
         params, seed, per_beta_frames=total_steps, device=device, agent_kwargs=agent_kwargs
@@ -213,11 +223,16 @@ def run_training(
 
             if global_step % fedavg_every == 0:
                 # Read before aggregating (right after a FedAvg round it is always 0), and at the
-                # same instants under DTE, so both methods are measured alike.
+                # same instants under DTE, so every method is measured alike.
                 episode.add_dispersion(weight_dispersion(agents))
-                if aggregation == "fedavg" and any(sample_counts.values()):
-                    fedavg_round(agents, sample_counts)
-                    episode.add_aggregation(fedavg_node_loads(list(agents)))
+                if aggregation != "none" and any(sample_counts.values()):
+                    if aggregation == "fedavg":
+                        fedavg_round(agents, sample_counts)
+                        episode.add_aggregation(fedavg_node_loads(list(agents)))
+                    else:
+                        episode.add_aggregation(
+                            gossip_round(agents, sample_counts, env.neighbor_mask, gossip_rng, gossip_neighbors)
+                        )
                     sample_counts = {agent_id: 0.0 for agent_id in env.possible_agents}
 
         for record in episode.records(ep):
@@ -282,10 +297,16 @@ def main() -> None:
     parser.add_argument("--num-v2v-pairs", type=int, default=5)
     parser.add_argument(
         "--aggregation", default="fedavg", choices=AGGREGATIONS,
-        help="'fedavg' averages weights every --fedavg-every slots; 'none' is the DTE control",
+        help="'fedavg' averages all weights at the BS every --aggregate-every slots; 'gossip' "
+        "averages each agent with its neighbors within 300 m; 'none' is the DTE control",
     )
     parser.add_argument(
-        "--fedavg-every", type=int, default=50, help="Aggregate weights every N slots"
+        "--aggregate-every", "--fedavg-every", dest="aggregate_every", type=int, default=50,
+        help="Aggregate weights every N slots (FedAvg or gossip)",
+    )
+    parser.add_argument(
+        "--gossip-neighbors", type=int, default=None,
+        help="Gossip only: pull at most S random neighbors per round (default: all within 300 m)",
     )
     parser.add_argument("--log-every", type=int, default=10)
     parser.add_argument("--output", type=Path, default=Path("runs/rewards.csv"))
@@ -306,10 +327,11 @@ def main() -> None:
         params,
         args.episodes,
         args.seed,
-        args.fedavg_every,
+        args.aggregate_every,
         args.log_every,
         device=device,
         aggregation=args.aggregation,
+        gossip_neighbors=args.gossip_neighbors,
     )
     wall_time_s = time.perf_counter() - start
 
@@ -319,11 +341,12 @@ def main() -> None:
         run_metadata(
             wall_time_s,
             device,
-            method="fedavg" if args.aggregation == "fedavg" else "dte",
+            method="dte" if args.aggregation == "none" else args.aggregation,
             seed=args.seed,
             episodes=args.episodes,
             num_v2v_pairs=args.num_v2v_pairs,
-            fedavg_every=args.fedavg_every,
+            aggregate_every=args.aggregate_every,
+            gossip_neighbors=args.gossip_neighbors,
             model_bytes=model_num_bytes(next(iter(agents.values())).online),
         ),
     )

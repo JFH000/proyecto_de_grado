@@ -4,20 +4,20 @@ Réplica simplificada de Li et al. (2022), "Federated Multi-Agent Deep RL for Re
 Allocation of V2V Communications": K pares V2V comparten las M = 15 bandas de las CUEs
 (usuarios celulares) y cada par, con su propio D3QN, decide qué banda reusar y con qué
 potencia transmitir. Es la línea base contra la que se compara la agregación
-descentralizada de la tesis.
+descentralizada de la tesis (gossip entre vecinos, `agents/gossip.py`), que también está aquí.
 
 ## Estructura
 
 | Ruta | Qué hay |
 |---|---|
 | `v2v_env/` | Entorno PettingZoo: canal, SINR, cola, recompensa (Sec. IV-A del paper) |
-| `agents/` | D3QN con replay priorizado, FedAvg (`federated.py`) y la política Greedy |
+| `agents/` | D3QN con replay priorizado, FedAvg (`federated.py`), gossip entre vecinos (`gossip.py`) y la política Greedy |
 | `main.py` | Entrena los K agentes con FedAvg o sin agregación (DTE) |
 | `train_greedy.py` | Corre el baseline Greedy, sin entrenamiento |
 | `analysis.py` | Carga de las corridas del barrido y métricas que se calculan al final (episodios hasta converger) |
 | `plots.py` | Colores, etiquetas y gráficas compartidas por los notebooks |
 | `jobs/` | Scripts de Slurm para Hypatia; los logs quedan en `jobs/logs/` |
-| `notebooks/` | `formulas_v2v_env.ipynb` (cada fórmula del entorno, verificada contra el código), `results.ipynb` (K = 5), `greedy.ipynb`, `fedavg.ipynb` y `dte.ipynb` (barrido de K) |
+| `notebooks/` | `formulas_v2v_env.ipynb` (cada fórmula del entorno, verificada contra el código), `results.ipynb` (K = 5), `greedy.ipynb`, `fedavg.ipynb`, `dte.ipynb` y `gossip.ipynb` (barrido de K) |
 | `tests/` | Pruebas con pytest |
 
 ## Instalación
@@ -44,6 +44,9 @@ uv run python main.py --aggregation fedavg --episodes 4000 --seed 0 --output run
 # DTE: los mismos agentes, sin compartir pesos nunca (control)
 uv run python main.py --aggregation none --episodes 4000 --seed 0 --output runs/k5/dte_seed0.csv
 
+# Gossip (la propuesta): cada 50 slots, cada agente promedia con los pares a 300 m o menos, sin la BS
+uv run python main.py --aggregation gossip --episodes 4000 --seed 0 --output runs/k5/gossip_seed0.csv
+
 # Greedy: canal con menos vecinos en el slot anterior (empates al azar), potencia máxima
 uv run python train_greedy.py --episodes 4000 --seed 0 --output runs/k5/greedy_seed0.csv
 ```
@@ -52,8 +55,9 @@ uv run python train_greedy.py --episodes 4000 --seed 0 --output runs/k5/greedy_s
 
 | Flag | Por defecto | Qué hace |
 |---|---|---|
-| `--aggregation` | `fedavg` | `fedavg` promedia los pesos de las redes online; `none` es DTE puro |
-| `--fedavg-every` | `50` | Cada cuántos slots se agrega (con `fedavg`) y se mide la dispersión de pesos (con los dos) |
+| `--aggregation` | `fedavg` | `fedavg` promedia los pesos de las redes online en la BS; `gossip` promedia cada agente con sus vecinos a 300 m o menos; `none` es DTE puro |
+| `--aggregate-every` | `50` | Cada cuántos slots se agrega (FedAvg o gossip) y se mide la dispersión de pesos (en todos). `--fedavg-every` es el nombre anterior y sigue funcionando |
+| `--gossip-neighbors` | todos | Solo gossip: cada agente toma a lo sumo S vecinos al azar por ronda (como Ge et al., 2024), sorteados de nuevo en cada ronda |
 | `--episodes` | `300` | Episodios de 200 slots |
 | `--seed` | `0` | Semilla de la corrida (ver abajo) |
 | `--num-v2v-pairs` | `5` | K, número de pares V2V (agentes) |
@@ -83,9 +87,9 @@ Los dos scripts escriben las mismas columnas, una fila por episodio y agente. La
 | `max_power_rate` | Fracción de slots a P_max |
 | `train_loss` | Pérdida promedio del D3QN de ese par en el episodio. `nan` si no entrenó (Greedy, o antes de llenar el primer minibatch) |
 | `weight_dispersion` | Celda. Distancia euclidiana promedio de los pesos de cada agente al promedio de todos, medida justo antes de cada ronda de agregación (en DTE, en los mismos instantes). `nan` en Greedy |
-| `comm_models` | Celda. Transferencias de un modelo entre dos nodos en el episodio. FedAvg: 2K por ronda; DTE y Greedy: 0 |
+| `comm_models` | Celda. Transferencias de un modelo entre dos nodos en el episodio. FedAvg: 2K por ronda; gossip: una por vecino de cada agente por ronda; DTE y Greedy: 0 |
 | `comm_bytes` | Celda. `comm_models` × tamaño de un modelo (la red online: 30 397 parámetros float32 = 121 588 bytes con K y M por defecto) |
-| `comm_max_load` | Celda. Transferencias en las que participó el nodo más cargado (un vehículo o la BS). En FedAvg es la BS |
+| `comm_max_load` | Celda. Transferencias en las que participó el nodo más cargado (un vehículo o la BS). En FedAvg es la BS; en gossip, el vehículo con más vecinos |
 
 Junto a cada CSV queda un JSON con el mismo nombre (`fedavg_seed0.json`) con la configuración
 de la corrida, la máquina, la GPU si la hubo y el tiempo total (`wall_time_s`).
@@ -110,6 +114,7 @@ Desde la raíz del repo, en Hypatia:
 make run-greedy   # 18 trabajos de CPU: Greedy x K = 5, 10, ..., 30 x semillas 0, 1, 2
 make run-fedavg   # 18 trabajos de GPU: lo mismo con FedAvg
 make run-dte      # 18 trabajos de GPU: lo mismo con DTE
+make run-gossip   # 18 trabajos de GPU: lo mismo con gossip
 make sq           # ver la cola
 ```
 
@@ -122,7 +127,7 @@ Cada trabajo corre `jobs/baseline.sbatch <metodo> <semilla> [episodios] [K]` y e
   se pisarían instalando paquetes y fallarían.
 - Saltan las corridas cuyo CSV ya existe: volver a correr el target, con `make sq` vacío,
   relanza solo las que faltan o fallaron.
-- El límite de tiempo de FedAvg y DTE crece con K (`LEARNER_MINUTES_PER_K`, 90 min por par:
+- El límite de tiempo de FedAvg, DTE y gossip crece con K (`LEARNER_MINUTES_PER_K`, 90 min por par:
   7.5 h con K = 5 y 45 h con K = 30). El CSV se escribe al final, así que un trabajo que se pasa del límite
   se pierde entero.
 
@@ -134,10 +139,10 @@ make run-fedavg SBATCH=echo   # muestra los sbatch sin enviarlos
 ```
 
 Para traer los resultados a la máquina local, desde la raíz: `make pull-runs`. Después,
-`notebooks/greedy.ipynb`, `notebooks/fedavg.ipynb` y `notebooks/dte.ipynb` analizan el barrido de K
-(todas las métricas vs. K, con la Fig. 3 de Li et al. como referencia; FedAvg comparado con Greedy
-y DTE comparado con FedAvg, semilla por semilla) y `notebooks/results.ipynb` las curvas de
-aprendizaje con K = 5.
+`notebooks/greedy.ipynb`, `fedavg.ipynb`, `dte.ipynb` y `gossip.ipynb` analizan el barrido de K
+(todas las métricas vs. K, con la Fig. 3 de Li et al. como referencia; FedAvg comparado con Greedy,
+DTE con FedAvg y gossip con FedAvg y DTE, semilla por semilla) y `notebooks/results.ipynb` las
+curvas de aprendizaje con K = 5.
 
 ## Supuestos y desviaciones respecto a Li et al. (2022)
 

@@ -1,4 +1,4 @@
-.PHONY: cpu gpu sq run-greedy run-fedavg run-dte pull-runs paper paper-watch paper-clean
+.PHONY: cpu gpu sq run-greedy run-fedavg run-dte run-gossip pull-runs paper paper-watch paper-clean
 
 cpu:
 	srun --mem=64gb --time=12:00:00 -p medium --pty bash -i
@@ -23,9 +23,9 @@ SEEDS := 0 1 2
 EPISODES := 4000
 SBATCH := sbatch
 GREEDY_TIME := 02:00:00
-# Limite de tiempo de cada trabajo de FedAvg y DTE: K x LEARNER_MINUTES_PER_K minutos (con 90: K = 5
-# -> 7.5 h, K = 30 -> 45 h). Estimado para FedAvg en la GPU de Hypatia con 4000 episodios: ~2.7 h con
-# K = 5 y ~22 h con K = 30; DTE entrena las mismas redes sin agregar, asi que usa el mismo limite.
+# Limite de tiempo de cada trabajo de FedAvg, DTE y gossip: K x LEARNER_MINUTES_PER_K minutos (con 90:
+# K = 5 -> 7.5 h, K = 30 -> 45 h). Estimado para FedAvg en la GPU de Hypatia con 4000 episodios: ~2.7 h
+# con K = 5 y ~22 h con K = 30; DTE y gossip entrenan las mismas redes, asi que usan el mismo limite.
 # El CSV se escribe solo al final: un trabajo que se pasa del limite se pierde entero.
 LEARNER_MINUTES_PER_K := 90
 
@@ -39,12 +39,16 @@ endef
 run-greedy:
 	$(call submit,greedy,-p medium --time=$(GREEDY_TIME))
 
-# FedAvg y DTE: una GPU por trabajo, 18 trabajos cada uno con los valores por defecto. Correr en Hypatia.
+# FedAvg, DTE y gossip: una GPU por trabajo, 18 trabajos cada uno con los valores por defecto.
+# Correr en Hypatia.
 run-fedavg:
 	$(call submit,fedavg,-p gpu --gres=gpu:1 --time=$$((k * $(LEARNER_MINUTES_PER_K))))
 
 run-dte:
 	$(call submit,dte,-p gpu --gres=gpu:1 --time=$$((k * $(LEARNER_MINUTES_PER_K))))
+
+run-gossip:
+	$(call submit,gossip,-p gpu --gres=gpu:1 --time=$$((k * $(LEARNER_MINUTES_PER_K))))
 
 # Trae v2v/runs/ de Hypatia a esta maquina (correr en la maquina local).
 HYPATIA_HOST := hypatia
