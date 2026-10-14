@@ -1,6 +1,7 @@
 import csv
 import math
 
+import pytest
 import torch
 
 from v2v_env.params import V2VEnvParams
@@ -55,6 +56,30 @@ def test_run_training_synchronizes_agents_online_weights():
     ids = list(agents)
     for p_a, p_b in zip(agents[ids[0]].online.parameters(), agents[ids[1]].online.parameters()):
         assert torch.equal(p_a, p_b)
+
+
+def test_run_training_without_aggregation_keeps_agents_independent():
+    # Same setup that synchronizes the weights under FedAvg (aggregation every slot),
+    # but with aggregation="none" the agents must never be averaged: DTE control.
+    params = make_tiny_params()
+    _, agents = run_training(
+        params,
+        episodes=4,
+        seed=0,
+        fedavg_every=1,
+        log_every=100,
+        agent_kwargs={"batch_size": 2},
+        aggregation="none",
+    )
+    ids = list(agents)
+    pairs = zip(agents[ids[0]].online.parameters(), agents[ids[1]].online.parameters())
+    assert any(not torch.equal(p_a, p_b) for p_a, p_b in pairs)
+
+
+def test_run_training_rejects_unknown_aggregation():
+    params = make_tiny_params()
+    with pytest.raises(ValueError):
+        run_training(params, episodes=1, seed=0, fedavg_every=1, log_every=100, aggregation="fedav")
 
 
 def test_write_records_csv_round_trips(tmp_path):

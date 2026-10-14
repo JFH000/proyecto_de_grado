@@ -2,7 +2,7 @@ import math
 
 import numpy as np
 
-from v2v_env.env import V2VEnv
+from v2v_env.env import V2VEnv, encode_channel_gain
 from v2v_env.params import V2VEnvParams
 
 
@@ -94,6 +94,48 @@ def test_episode_truncates_after_max_steps():
         _, _, terminations, truncations, _ = env.step(actions)
     assert all(truncations.values())
     assert env.agents == []
+
+
+def test_encode_channel_gain_maps_db_around_reference():
+    # 1e-10 -> -100 dB (the reference) -> 0; 1e-9 -> -90 dB -> +1; 1e-12 -> -120 dB -> -2
+    encoded = encode_channel_gain(np.array([1e-10, 1e-9, 1e-12]), ref_db=-100.0, scale_db=10.0)
+    assert np.allclose(encoded, [0.0, 1.0, -2.0])
+
+
+def test_encode_channel_gain_is_finite_for_a_zero_gain():
+    assert np.isfinite(encode_channel_gain(np.array([0.0]), ref_db=-100.0, scale_db=10.0)).all()
+
+
+def test_channel_features_are_order_one():
+    # Raw coefficients (~1e-9 to 1e-11) would give a median magnitude near 1e-10.
+    params = V2VEnvParams(num_cues=15, num_v2v_pairs=5, num_power_levels=3)
+    env = V2VEnv(params)
+    m = params.num_cues
+    channel_features = []
+    for seed in range(5):
+        obs, _ = env.reset(seed=seed)
+        channel_features += [o[: 2 * m] for o in obs.values()]
+    magnitudes = np.abs(np.concatenate(channel_features))
+    assert 0.1 < np.median(magnitudes) < 10
+    assert magnitudes.max() <= 10
+
+
+def test_queue_feature_is_fraction_of_max_queue():
+    # Zero power -> rate 0, so one slot adds tau * lambda = 1e-3 s * 1e6 bps = 1000 bits = 0.01 Q_max.
+    params = V2VEnvParams(num_cues=4, num_v2v_pairs=3, num_power_levels=2)
+    env = V2VEnv(params)
+    env.reset(seed=0)
+    zero_power = {agent: 0 for agent in env.agents}  # channel 0, power level 0
+    obs, _, _, _, _ = env.step(zero_power)
+    for agent_obs in obs.values():
+        assert np.isclose(agent_obs[-1], 0.01)
+
+
+def test_observations_lie_in_observation_space():
+    env = make_env()
+    obs, _ = env.reset(seed=0)
+    for agent, agent_obs in obs.items():
+        assert env.observation_space(agent).contains(agent_obs)
 
 
 def test_reward_stays_on_the_scale_of_the_penalty():

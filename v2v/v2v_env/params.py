@@ -42,6 +42,10 @@ class V2VEnvParams:
     v2v_arrival_rate_bps: float = 1.0e6  # lambda_k traffic arrival rate; not given numerically
     slot_duration_s: float = 1.0e-3  # tau; not given numerically by the paper
 
+    # --- Observation encoding (not part of the paper's MDP; keeps network inputs near order 1) ---
+    channel_gain_ref_db: float = -100.0  # channel coefficients are observed as (dB - ref) / scale
+    channel_gain_scale_db: float = 10.0
+
     max_queue_length_bits: float = field(init=False)  # Q_max, derived via Little's law (Eq. 18)
 
     def __post_init__(self) -> None:

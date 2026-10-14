@@ -1,8 +1,12 @@
 """Train K D3QN agents on the V2V resource-allocation environment (Li et al.
 2022, "Federated Multi-Agent Deep RL for Resource Allocation of V2V
-Communications") with FedAvg: every `--fedavg-every` slots, each agent's
+Communications").
+
+`--aggregation fedavg` (default): every `--fedavg-every` slots, each agent's
 online-network weights are uploaded, averaged weighted by the minibatch size
 it trained on since the last round, and broadcast back (agents/federated.py).
+`--aggregation none`: the agents never share weights -- pure DTE, the control
+that shows what federation adds.
 """
 
 import argparse
@@ -15,6 +19,8 @@ from agents.d3qn_agent import D3QNAgent
 from agents.federated import fedavg_round
 from v2v_env.env import V2VEnv
 from v2v_env.params import V2VEnvParams
+
+AGGREGATIONS = ("none", "fedavg")
 
 
 def resolve_device(requested: str) -> str:
@@ -61,7 +67,10 @@ def run_training(
     log_every: int = 10,
     device: str = "cpu",
     agent_kwargs: dict | None = None,
+    aggregation: str = "fedavg",
 ) -> tuple[list[tuple[int, str, float]], dict[str, D3QNAgent]]:
+    if aggregation not in AGGREGATIONS:
+        raise ValueError(f"aggregation must be one of {AGGREGATIONS}, got {aggregation!r}")
     env = V2VEnv(params)
     total_steps = episodes * params.max_steps
     agents = make_agents(
@@ -89,7 +98,11 @@ def run_training(
             obs = next_obs
             global_step += 1
 
-            if global_step % fedavg_every == 0 and any(sample_counts.values()):
+            if (
+                aggregation == "fedavg"
+                and global_step % fedavg_every == 0
+                and any(sample_counts.values())
+            ):
                 fedavg_round(agents, sample_counts)
                 sample_counts = {agent_id: 0.0 for agent_id in env.possible_agents}
 
@@ -132,6 +145,10 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--num-v2v-pairs", type=int, default=5)
     parser.add_argument(
+        "--aggregation", default="fedavg", choices=AGGREGATIONS,
+        help="'fedavg' averages weights every --fedavg-every slots; 'none' is the DTE control",
+    )
+    parser.add_argument(
         "--fedavg-every", type=int, default=50, help="Aggregate weights every N slots"
     )
     parser.add_argument("--log-every", type=int, default=10)
@@ -143,13 +160,19 @@ def main() -> None:
     args = parser.parse_args()
 
     device = resolve_device(args.device)
-    print(f"Using device: {device}")
+    print(f"Using device: {device} | aggregation: {args.aggregation}")
 
     params = V2VEnvParams(
         num_cues=15, num_v2v_pairs=args.num_v2v_pairs, num_power_levels=3, max_steps=200
     )
     records, _ = run_training(
-        params, args.episodes, args.seed, args.fedavg_every, args.log_every, device=device
+        params,
+        args.episodes,
+        args.seed,
+        args.fedavg_every,
+        args.log_every,
+        device=device,
+        aggregation=args.aggregation,
     )
 
     write_records_csv(records, args.output)

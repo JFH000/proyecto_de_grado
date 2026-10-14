@@ -2,7 +2,9 @@
 
 Each agent is a V2V pair. Per-agent observation is local only (own channel, CUE
 channels, one-slot-delayed neighbor selections within 300 m, own queue length) --
-no agent ever sees another agent's private state or the true global state. The
+no agent ever sees another agent's private state or the true global state. Channel
+coefficients are observed in normalized dB (encode_channel_gain) and the queue as a
+fraction of Q_max, so the network's inputs stay near order 1. The
 reward is a single value computed centrally at each step from the joint action and
 broadcast identically to every agent (Eq. 22); see reward.py for the one deliberate
 deviation from the literal printed formula (the queue term's sign).
@@ -17,6 +19,14 @@ from pettingzoo import ParallelEnv
 from v2v_env import channel, physics
 from v2v_env.params import V2VEnvParams
 from v2v_env.reward import compute_reward
+
+MIN_CHANNEL_GAIN = 1e-20  # -200 dB floor, so a zero fading draw still has a finite log
+
+
+def encode_channel_gain(gain: np.ndarray, ref_db: float, scale_db: float) -> np.ndarray:
+    """Channel coefficient as an observation feature: dB, centered on ref_db, in units of scale_db."""
+    gain_db = 10.0 * np.log10(np.maximum(gain, MIN_CHANNEL_GAIN))
+    return (gain_db - ref_db) / scale_db
 
 
 class V2VEnv(ParallelEnv):
@@ -36,7 +46,10 @@ class V2VEnv(ParallelEnv):
 
     @functools.lru_cache(maxsize=None)
     def observation_space(self, agent):
-        return Box(low=0.0, high=np.inf, shape=(self.params.state_dim,), dtype=np.float64)
+        m = self.params.num_cues
+        # Encoded channel gains (first 2M entries) are signed; neighbor counts and queue are not.
+        low = np.concatenate([np.full(2 * m, -np.inf), np.zeros(m + 1)])
+        return Box(low=low, high=np.inf, shape=(self.params.state_dim,), dtype=np.float64)
 
     @functools.lru_cache(maxsize=None)
     def action_space(self, agent):
@@ -94,14 +107,18 @@ class V2VEnv(ParallelEnv):
         neighbor_counts = channel.neighbor_channel_counts(
             self._neighbor_mask, self._prev_channels, self.params.num_cues
         )
+        ref_db, scale_db = self.params.channel_gain_ref_db, self.params.channel_gain_scale_db
+        h_own = encode_channel_gain(self._h_own, ref_db, scale_db)
+        h_cue = encode_channel_gain(self._h_cue, ref_db, scale_db)
+        queue = self._queue / self.params.max_queue_length_bits
         obs = {}
         for i, agent in enumerate(self.possible_agents):
             obs[agent] = np.concatenate(
                 [
-                    self._h_own[i],
-                    self._h_cue,
+                    h_own[i],
+                    h_cue,
                     neighbor_counts[i].astype(np.float64),
-                    [self._queue[i]],
+                    [queue[i]],
                 ]
             )
         return obs
