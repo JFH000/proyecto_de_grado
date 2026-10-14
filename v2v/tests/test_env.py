@@ -2,8 +2,17 @@ import math
 
 import numpy as np
 
+from v2v_env import channel
 from v2v_env.env import V2VEnv, encode_channel_gain
 from v2v_env.params import V2VEnvParams
+
+P_23_DBM_W = 10 ** (23 / 10) * 1e-3  # CUE and maximum V2V transmit power
+NOISE_1_MHZ_W = 10 ** (-174 / 10) * 1e-3 * 1e6  # -174 dBm/Hz over W = 1 MHz
+
+
+def decode_channel_gain(feature, params: V2VEnvParams):
+    """Inverse of the observation encoding (10 log10 h - ref) / scale."""
+    return 10 ** ((feature * params.channel_gain_scale_db + params.channel_gain_ref_db) / 10)
 
 
 def make_env(**overrides):
@@ -182,6 +191,59 @@ def test_v2v_interference_lowers_reported_cue_rate():
     _, _, _, _, info_silent = silent.step({agent: 0 for agent in silent.agents})
     _, _, _, _, info_loud = loud.step({agent: 2 for agent in loud.agents})  # all on channel 0, max power
     assert info_loud["v2v_0"]["cue_rate_mbps"] < info_silent["v2v_0"]["cue_rate_mbps"]
+
+
+def test_cue_rates_use_the_cue_channel_the_agents_observe():
+    # With every V2V pair silent the CUEs only see noise, so CUE m transmits at
+    # W log2(1 + P_m h_{m,B}[m] / sigma^2) with the coefficient observed for this slot.
+    params = V2VEnvParams(num_cues=4, num_v2v_pairs=2, num_power_levels=2)
+    env = V2VEnv(params)
+    obs, _ = env.reset(seed=0)
+    h_cue = decode_channel_gain(obs["v2v_0"][4:8], params)
+    _, _, _, _, infos = env.step({agent: 0 for agent in env.agents})
+    expected_mbps = np.mean(np.log2(1 + P_23_DBM_W * h_cue / NOISE_1_MHZ_W))  # W = 1 MHz
+    assert np.isclose(infos["v2v_0"]["cue_rate_mbps"], expected_mbps, rtol=1e-9)
+
+
+def test_v2v_rate_uses_the_own_channel_the_agent_observes():
+    # Pair 0 transmits alone at maximum power and the CUEs are effectively silent, so its SINR is
+    # P_max h_0[m] / sigma^2 with the coefficient it observed for channel m. Arrivals of 1 Gbit/s
+    # exceed any feasible rate, so the queue after one slot is tau * (lambda - R) and reveals R.
+    params = V2VEnvParams(
+        num_cues=4, num_v2v_pairs=2, num_power_levels=2, cue_tx_power_dbm=-200.0, v2v_arrival_rate_bps=1e9
+    )
+    env = V2VEnv(params)
+    obs, _ = env.reset(seed=0)
+    chosen = 2
+    h_own = decode_channel_gain(obs["v2v_0"][chosen], params)
+    levels = params.num_power_levels + 1
+    obs, _, _, _, _ = env.step({"v2v_0": chosen * levels + params.num_power_levels, "v2v_1": 0})
+    queue_bits = obs["v2v_0"][-1] * params.max_queue_length_bits
+    rate = params.v2v_arrival_rate_bps - queue_bits / params.slot_duration_s
+    assert np.isclose(rate, 1e6 * np.log2(1 + P_23_DBM_W * h_own / NOISE_1_MHZ_W), rtol=1e-6)
+
+
+def test_reliability_uses_large_scale_gain_of_v2v_interferers(monkeypatch):
+    # Eq. 15 puts only the large-scale gain of co-channel V2V interferers in the denominator, so
+    # with a fixed layout and fixed actions the outage flag cannot change from slot to slot.
+    # Pair 0 has a 10 m link and pair 1 transmits 90 m from pair 0's receiver on the same channel:
+    # large-scale SINR = (90 / 10)^1.61 ~ 34.4 above the threshold of ~30.0, so pair 0 is never
+    # in outage. With the interferer's fading in the denominator it would fail in ~1/3 of the slots.
+    layout = channel.Positions(
+        bs=np.zeros(2),
+        cue=np.array([[400.0, 0.0], [0.0, 400.0]]),
+        v2v_tx=np.array([[100.0, 0.0], [200.0, 0.0]]),
+        v2v_rx=np.array([[110.0, 0.0], [210.0, 0.0]]),
+    )
+    monkeypatch.setattr(channel, "sample_positions", lambda rng, params: layout)
+    env = V2VEnv(V2VEnvParams(num_cues=2, num_v2v_pairs=2, num_power_levels=1, cue_tx_power_dbm=-200.0))
+    env.reset(seed=0)
+    both_on_channel_0_at_max_power = {"v2v_0": 1, "v2v_1": 1}
+    outages = []
+    while env.agents:
+        _, _, _, _, infos = env.step(both_on_channel_0_at_max_power)
+        outages.append(infos["v2v_0"]["outage"])
+    assert not any(outages)
 
 
 def test_reward_stays_on_the_scale_of_the_penalty():

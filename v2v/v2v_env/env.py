@@ -135,13 +135,14 @@ class V2VEnv(ParallelEnv):
             channels[i] = ch
             powers_w[i] = self._power_levels_w[level]
 
-        g_cue_bs = channel.small_scale_fading(self._rng, size=(m,))
+        # The own-link and CUE-to-BS coefficients are the ones in the agents' state for this slot
+        # (Li et al. 2022: decisions use instantaneous CSI). The links no agent observes get
+        # fresh fading draws.
         g_v2v_to_bs = channel.small_scale_fading(self._rng, size=(k,))
-        g_own_active = channel.small_scale_fading(self._rng, size=(k,))
         g_cue_to_v2v = channel.small_scale_fading(self._rng, size=(k,))
         g_v2v_to_v2v = channel.small_scale_fading(self._rng, size=(k, k))
 
-        h_cue_bs = self._alpha_cue_bs * g_cue_bs  # (M,)
+        h_cue_bs = self._h_cue  # (M,)
         h_v2v_to_bs = self._alpha_v2v_to_bs * g_v2v_to_bs  # (K,), at each k's chosen channel
 
         cue_interference_w = np.zeros(m)
@@ -155,15 +156,16 @@ class V2VEnv(ParallelEnv):
 
         same_channel = channels[:, None] == channels[None, :]
         np.fill_diagonal(same_channel, False)
-        v2v_interference_w = (same_channel * powers_w[None, :] * self._alpha_v2v_to_v2v.T * g_v2v_to_v2v).sum(
-            axis=1
-        )
+        co_channel_power_w = same_channel * powers_w[None, :]
+        v2v_interference_w = (co_channel_power_w * self._alpha_v2v_to_v2v.T * g_v2v_to_v2v).sum(axis=1)
+        # Eq. 15 uses only the large-scale gain of the co-channel V2V interferers.
+        v2v_interference_large_scale_w = (co_channel_power_w * self._alpha_v2v_to_v2v.T).sum(axis=1)
 
         v2v_rates = np.zeros(k)
         reliability_margins = np.zeros(k)
         for i in range(k):
             ch = channels[i]
-            h_own_i = self._alpha_v2v_own[i] * g_own_active[i]
+            h_own_i = self._h_own[i, ch]
             interference_cue_w = self._cue_power_w * self._alpha_cue_to_v2v[ch, i] * g_cue_to_v2v[i]
             s = physics.sinr(powers_w[i] * h_own_i, self._noise_w, interference_cue_w + v2v_interference_w[i])
             v2v_rates[i] = physics.rate_bps(self.params.channel_bandwidth_hz, s) if powers_w[i] > 0 else 0.0
@@ -171,7 +173,7 @@ class V2VEnv(ParallelEnv):
                 powers_w[i],
                 self._alpha_v2v_own[i],
                 self._noise_w,
-                interference_cue_w + v2v_interference_w[i],
+                interference_cue_w + v2v_interference_large_scale_w[i],
                 self.params.sinr_threshold_db,
                 self.params.outage_probability_threshold,
             )
