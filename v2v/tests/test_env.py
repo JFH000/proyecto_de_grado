@@ -96,6 +96,18 @@ def test_episode_truncates_after_max_steps():
     assert env.agents == []
 
 
+def test_reward_stays_on_the_scale_of_the_penalty():
+    # With dimensionless (threshold-relative) terms the reward per slot is tens, not the
+    # ~3e7 it reaches when the CUE-rate margin is summed in raw bps.
+    env = V2VEnv(V2VEnvParams(num_cues=15, num_v2v_pairs=5, num_power_levels=3, max_steps=50))
+    env.reset(seed=0)
+    rng = np.random.default_rng(0)
+    while env.agents:
+        actions = {agent: int(rng.integers(env.action_space(agent).n)) for agent in env.agents}
+        _, rewards, _, _, _ = env.step(actions)
+        assert abs(rewards["v2v_0"]) < 1e3
+
+
 def test_random_action_episode_runs_without_nan_or_inf_rewards():
     env = make_env(max_steps=20)
     env.reset(seed=123)

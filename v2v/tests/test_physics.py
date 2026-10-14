@@ -8,6 +8,7 @@ from v2v_env.physics import (
     rate_bps,
     update_queue,
     reliability_margin,
+    reliability_threshold,
 )
 
 
@@ -76,6 +77,11 @@ def test_reliability_margin_positive_when_constraint_satisfied():
     lhs = 1.0 * 1.0 / 0.01
     rhs = 1.0 / np.log(2.0)
     assert np.isclose(margin, lhs - rhs)
+
+
+def test_reliability_threshold_is_right_hand_side_of_eq_15():
+    # gamma_o = 5 dB -> 3.16228 (linear); ln(1 / (1 - 0.1)) = 0.105361 -> 3.16228 / 0.105361
+    assert np.isclose(reliability_threshold(sinr_threshold_db=5.0, outage_probability_threshold=0.1), 30.0139, rtol=1e-4)
 
 
 def test_reliability_margin_negative_when_signal_weak():

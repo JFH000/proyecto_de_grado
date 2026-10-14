@@ -34,6 +34,12 @@ def update_queue(
     return max(0.0, prev_queue + slot_duration_s * arrival_rate_bps - slot_duration_s * rate_bps)
 
 
+def reliability_threshold(sinr_threshold_db: float, outage_probability_threshold: float) -> float:
+    """Right-hand side of Eq. 15: gamma_o / ln(1 / (1 - p_o)), as a linear SINR."""
+    gamma_o_linear = 10 ** (sinr_threshold_db / 10)
+    return gamma_o_linear / np.log(1.0 / (1.0 - outage_probability_threshold))
+
+
 def reliability_margin(
     tx_power_w: float,
     alpha: float,
@@ -43,6 +49,4 @@ def reliability_margin(
     outage_probability_threshold: float,
 ) -> float:
     lhs = tx_power_w * alpha / (noise_w + interference_w)
-    gamma_o_linear = 10 ** (sinr_threshold_db / 10)
-    rhs = gamma_o_linear / np.log(1.0 / (1.0 - outage_probability_threshold))
-    return lhs - rhs
+    return lhs - reliability_threshold(sinr_threshold_db, outage_probability_threshold)

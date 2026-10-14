@@ -20,6 +20,7 @@ def test_reward_rewards_cue_rate_margin_above_minimum():
         v2v_queues=np.array([]),
         max_queue_length_bits=1.0,
         reliability_margins=np.array([]),
+        reliability_threshold=1.0,
         weights=weights,
         penalty=-10.0,
     )
@@ -29,6 +30,7 @@ def test_reward_rewards_cue_rate_margin_above_minimum():
         v2v_queues=np.array([]),
         max_queue_length_bits=1.0,
         reliability_margins=np.array([]),
+        reliability_threshold=1.0,
         weights=weights,
         penalty=-10.0,
     )
@@ -43,6 +45,7 @@ def test_reward_penalizes_cue_rate_below_minimum():
         v2v_queues=np.array([]),
         max_queue_length_bits=1.0,
         reliability_margins=np.array([]),
+        reliability_threshold=1.0,
         weights=weights,
         penalty=-10.0,
     )
@@ -63,6 +66,7 @@ def test_reward_rewards_queue_headroom_below_max():
         v2v_queues=np.array([10.0]),
         max_queue_length_bits=100.0,
         reliability_margins=np.array([]),
+        reliability_threshold=1.0,
         weights=weights,
         penalty=-10.0,
     )
@@ -72,6 +76,7 @@ def test_reward_rewards_queue_headroom_below_max():
         v2v_queues=np.array([90.0]),
         max_queue_length_bits=100.0,
         reliability_margins=np.array([]),
+        reliability_threshold=1.0,
         weights=weights,
         penalty=-10.0,
     )
@@ -86,6 +91,7 @@ def test_reward_penalizes_queue_overflow():
         v2v_queues=np.array([150.0]),
         max_queue_length_bits=100.0,
         reliability_margins=np.array([]),
+        reliability_threshold=1.0,
         weights=weights,
         penalty=-10.0,
     )
@@ -100,6 +106,7 @@ def test_reward_rewards_positive_reliability_margin_and_penalizes_negative():
         v2v_queues=np.array([]),
         max_queue_length_bits=1.0,
         reliability_margins=np.array([2.0]),
+        reliability_threshold=4.0,
         weights=weights,
         penalty=-10.0,
     )
@@ -109,22 +116,25 @@ def test_reward_rewards_positive_reliability_margin_and_penalizes_negative():
         v2v_queues=np.array([]),
         max_queue_length_bits=1.0,
         reliability_margins=np.array([-2.0]),
+        reliability_threshold=4.0,
         weights=weights,
         penalty=-10.0,
     )
-    assert reliable == 2.0
+    assert reliable == 0.5  # margin 2 over a threshold of 4
     assert unreliable == -10.0
 
 
-def test_reward_combines_all_three_weighted_terms():
+def test_reward_terms_are_relative_to_their_thresholds():
+    # Each margin is divided by its own threshold, so the terms are dimensionless:
+    # CUE (3e6 - 1e6) / 1e6 = 2.0, queue (100 - 25) / 100 = 0.75, reliability 15 / 30 = 0.5.
     r = compute_reward(
-        cue_rates=np.array([2.0e6]),
+        cue_rates=np.array([3.0e6]),
         cue_min_rate_bps=1.0e6,
-        v2v_queues=np.array([10.0]),
+        v2v_queues=np.array([25.0]),
         max_queue_length_bits=100.0,
-        reliability_margins=np.array([1.0]),
+        reliability_margins=np.array([15.0]),
+        reliability_threshold=30.0,
         weights=(0.3, 0.5, 0.2),
         penalty=-10.0,
     )
-    expected = 0.3 * 1.0e6 + 0.5 * 90.0 + 0.2 * 1.0
-    assert np.isclose(r, expected)
+    assert np.isclose(r, 0.3 * 2.0 + 0.5 * 0.75 + 0.2 * 0.5)

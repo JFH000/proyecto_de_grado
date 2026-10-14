@@ -165,6 +165,9 @@ class V2VEnv(ParallelEnv):
             v2v_queues=self._queue,
             max_queue_length_bits=self.params.max_queue_length_bits,
             reliability_margins=reliability_margins,
+            reliability_threshold=physics.reliability_threshold(
+                self.params.sinr_threshold_db, self.params.outage_probability_threshold
+            ),
             weights=self.params.reward_weights,
             penalty=self.params.penalty_constant,
         )

@@ -10,6 +10,13 @@ PDF -- the literal form rewards larger queue overflows, which contradicts constr
 (19e), the paper's own "guarantee the QoS requirements" framing, and this project's
 checklist description of the term as a "queue/delay penalty". Implemented here as
 U(Q_max - Q_k); flagged for the user/advisor to double check against their own copy.
+
+Second deviation: every margin is divided by its own threshold before U is applied --
+(R_m - R_min) / R_min, (Q_max - Q_k) / Q_max and (LHS - RHS) / RHS of Eq. 15 -- so the
+three terms are dimensionless and comparable with the penalty A. In raw units (bps,
+bits, linear SINR) the CUE-rate term is ~3e7 per slot, the queue term ~2.5e5 and the
+reliability term ~1e2, so the reward tracks only the CUE rate and A = -10 has no effect
+on any of the three constraints.
 """
 
 import numpy as np
@@ -25,13 +32,16 @@ def compute_reward(
     v2v_queues: np.ndarray,
     max_queue_length_bits: float,
     reliability_margins: np.ndarray,
+    reliability_threshold: float,
     weights: tuple[float, float, float],
     penalty: float,
 ) -> float:
     lambda1, lambda2, lambda3 = weights
 
-    cue_term = sum(utility(r - cue_min_rate_bps, penalty) for r in cue_rates)
-    queue_term = sum(utility(max_queue_length_bits - q, penalty) for q in v2v_queues)
-    reliability_term = sum(utility(m, penalty) for m in reliability_margins)
+    cue_term = sum(utility((r - cue_min_rate_bps) / cue_min_rate_bps, penalty) for r in cue_rates)
+    queue_term = sum(
+        utility((max_queue_length_bits - q) / max_queue_length_bits, penalty) for q in v2v_queues
+    )
+    reliability_term = sum(utility(m / reliability_threshold, penalty) for m in reliability_margins)
 
     return lambda1 * cue_term + lambda2 * queue_term + lambda3 * reliability_term
