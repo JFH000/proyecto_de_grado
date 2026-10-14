@@ -1,8 +1,17 @@
+import math
+
 import pytest
 import torch
 
 from agents.d3qn_agent import D3QNAgent
-from agents.federated import fedavg_round, weighted_average_state_dicts
+from agents.federated import (
+    fedavg_node_loads,
+    fedavg_round,
+    model_num_bytes,
+    weight_dispersion,
+    weighted_average_state_dicts,
+)
+from agents.network import DuelingQNetwork
 
 
 def test_weighted_average_state_dicts_with_equal_weights_is_plain_mean():
@@ -73,3 +82,43 @@ def test_fedavg_round_leaves_target_networks_untouched():
 
     for key, value in agent_a.target.state_dict().items():
         assert torch.equal(value, target_a_before[key])
+
+
+def test_fedavg_node_loads_route_every_transfer_through_the_bs():
+    # Each agent uploads its model and downloads the global one; the BS takes part in all 2K transfers.
+    loads = fedavg_node_loads(["v2v_0", "v2v_1", "v2v_2"])
+    assert loads == {"v2v_0": 2, "v2v_1": 2, "v2v_2": 2, "bs": 6}
+
+
+def test_weight_dispersion_is_zero_after_fedavg_round():
+    agent_a = D3QNAgent(state_dim=2, action_dim=2, seed=0)
+    agent_b = D3QNAgent(state_dim=2, action_dim=2, seed=1)
+    agents = {"a": agent_a, "b": agent_b}
+    assert weight_dispersion(agents) > 0
+
+    fedavg_round(agents, {"a": 1.0, "b": 1.0})
+
+    assert weight_dispersion(agents) == 0.0
+
+
+def test_weight_dispersion_is_mean_distance_to_the_plain_average():
+    # All weights 0 vs all weights 1: the average is 0.5 everywhere, so each agent sits at
+    # 0.5 * sqrt(P) from it.
+    agent_a = D3QNAgent(state_dim=2, action_dim=2, seed=0)
+    agent_b = D3QNAgent(state_dim=2, action_dim=2, seed=1)
+    with torch.no_grad():
+        for p in agent_a.online.parameters():
+            p.fill_(0.0)
+        for p in agent_b.online.parameters():
+            p.fill_(1.0)
+    num_params = sum(p.numel() for p in agent_a.online.parameters())
+
+    result = weight_dispersion({"a": agent_a, "b": agent_b})
+
+    assert math.isclose(result, 0.5 * math.sqrt(num_params), rel_tol=1e-6)
+
+
+def test_model_num_bytes_counts_the_shared_online_network():
+    # Default V2V network: 46 inputs, 128-128 hidden, 60 actions -> 30,397 float32 parameters.
+    network = DuelingQNetwork(state_dim=46, action_dim=60, hidden_dim=128)
+    assert model_num_bytes(network) == 30_397 * 4

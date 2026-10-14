@@ -45,3 +45,18 @@ def test_run_greedy_is_deterministic_given_same_seed():
     first = run_greedy(params, episodes=2, seed=7)
     second = run_greedy(params, episodes=2, seed=7)
     assert first == second
+
+
+def test_run_greedy_always_transmits_at_maximum_power():
+    params = make_tiny_params()
+    records = run_greedy(params, episodes=2, seed=0)
+    assert all(r.max_power_rate == 1.0 and r.mean_power_ratio == 1.0 for r in records)
+
+
+def test_run_greedy_neither_trains_nor_shares_models():
+    params = make_tiny_params()
+    records = run_greedy(params, episodes=2, seed=0)
+    for r in records:
+        assert math.isnan(r.train_loss)
+        assert math.isnan(r.weight_dispersion)
+        assert (r.comm_models, r.comm_bytes, r.comm_max_load) == (0, 0, 0)

@@ -3,16 +3,26 @@ resource-allocation environment: always picks the channel with the fewest
 co-channel V2V neighbors (ties broken at random) and transmits at maximum power
 (agents/greedy_policy.py).
 No training happens here -- this is the comparison point for main.py's FedAvg run.
-The CSV has the same columns as main.py's (EpisodeRecord).
+The CSV has the same columns as main.py's (EpisodeRecord), with no training loss,
+weight dispersion or model traffic; a JSON with the run's settings and wall time goes
+next to it.
 """
 
 import argparse
+import time
 from pathlib import Path
 
 import numpy as np
 
 from agents.greedy_policy import greedy_action
-from main import EpisodeAccumulator, EpisodeRecord, episode_seed, write_records_csv
+from main import (
+    EpisodeAccumulator,
+    EpisodeRecord,
+    episode_seed,
+    run_metadata,
+    write_records_csv,
+    write_run_metadata,
+)
 from v2v_env.env import V2VEnv
 from v2v_env.params import V2VEnvParams
 
@@ -48,10 +58,23 @@ def main() -> None:
     params = V2VEnvParams(
         num_cues=15, num_v2v_pairs=args.num_v2v_pairs, num_power_levels=3, max_steps=200
     )
+    start = time.perf_counter()
     records = run_greedy(params, args.episodes, args.seed)
+    wall_time_s = time.perf_counter() - start
 
     write_records_csv(records, args.output)
-    print(f"Saved: {args.output}")
+    write_run_metadata(
+        args.output,
+        run_metadata(
+            wall_time_s,
+            "cpu",
+            method="greedy",
+            seed=args.seed,
+            episodes=args.episodes,
+            num_v2v_pairs=args.num_v2v_pairs,
+        ),
+    )
+    print(f"Saved: {args.output} ({wall_time_s / 60:.1f} min)")
 
 
 if __name__ == "__main__":

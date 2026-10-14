@@ -196,6 +196,14 @@ class V2VEnv(ParallelEnv):
         cue_rate_mbps = float(cue_rates.mean() / 1e6)
         v2v_delay_ms = self._queue / self.params.v2v_arrival_rate_bps * 1e3
 
+        # Behaviour metrics: a pair at zero power picks a channel but does not occupy it, so channel
+        # sharing only counts pairs that actually transmit.
+        transmitting = powers_w > 0
+        co_channel = transmitting & (same_channel & transmitting[None, :]).any(axis=1)
+        channels_used = int(np.unique(channels[transmitting]).size)
+        max_power_w = self._power_levels_w[-1]
+        neighbor_counts = self._neighbor_mask.sum(axis=1)
+
         self._queue = np.array(
             [
                 physics.update_queue(
@@ -219,6 +227,11 @@ class V2VEnv(ParallelEnv):
                 "cue_rate_mbps": cue_rate_mbps,
                 "v2v_delay_ms": float(v2v_delay_ms[i]),
                 "outage": bool(reliability_margins[i] < 0),
+                "power_ratio": float(powers_w[i] / max_power_w),
+                "max_power": bool(powers_w[i] == max_power_w),
+                "co_channel": bool(co_channel[i]),
+                "channels_used": channels_used,
+                "neighbors": int(neighbor_counts[i]),
             }
             for i, agent in enumerate(self.possible_agents)
         }

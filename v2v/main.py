@@ -8,19 +8,25 @@ it trained on since the last round, and broadcast back (agents/federated.py).
 `--aggregation none`: the agents never share weights -- pure DTE, the control
 that shows what federation adds.
 
-Writes one CSV row per episode and agent: the summed reward plus the per-slot
-QoS metrics V2VEnv.step reports, averaged over the episode (EpisodeRecord).
+Writes one CSV row per episode and agent: the summed reward, the per-slot QoS and
+behaviour metrics V2VEnv.step reports averaged over the episode, and the training-side
+metrics (loss, weight dispersion, model traffic) -- see EpisodeRecord. Next to the CSV, a
+JSON file records the run's settings, where it ran and how long it took.
 """
 
 import argparse
 import csv
+import json
+import math
+import platform
+import time
 from pathlib import Path
 from typing import NamedTuple
 
 import torch
 
 from agents.d3qn_agent import D3QNAgent
-from agents.federated import fedavg_round
+from agents.federated import fedavg_node_loads, fedavg_round, model_num_bytes, weight_dispersion
 from v2v_env.env import V2VEnv
 from v2v_env.params import V2VEnvParams
 
@@ -47,37 +53,81 @@ class EpisodeRecord(NamedTuple):
     cue_rate_mbps: float  # mean over slots of the cell's mean CUE rate
     v2v_delay_ms: float  # mean over slots of this pair's queueing delay
     outage_rate: float  # fraction of slots in which this pair failed the reliability constraint
+    neighbors: float  # pairs within the neighbor radius (fixed within an episode)
+    co_channel_rate: float  # fraction of slots this pair transmitted on a channel another transmitting pair used
+    channels_used: float  # mean over slots of the distinct channels carrying V2V transmissions (cell)
+    mean_power_ratio: float  # mean transmit power as a fraction of P_max
+    max_power_rate: float  # fraction of slots at P_max
+    train_loss: float  # mean D3QN loss over this agent's updates; NaN if it never learned
+    weight_dispersion: float  # mean over aggregation instants of the agents' weight dispersion (cell); NaN if none
+    comm_models: int  # model transfers between any two nodes during the episode (cell)
+    comm_bytes: int  # comm_models x size of one model
+    comm_max_load: int  # most transfers a single node (vehicle or BS) took part in (cell)
+
+
+# EpisodeRecord field <- env.step info key, averaged over the episode's slots.
+SLOT_AVERAGES = {
+    "cue_rate_mbps": "cue_rate_mbps",
+    "v2v_delay_ms": "v2v_delay_ms",
+    "outage_rate": "outage",
+    "neighbors": "neighbors",
+    "co_channel_rate": "co_channel",
+    "channels_used": "channels_used",
+    "mean_power_ratio": "power_ratio",
+    "max_power_rate": "max_power",
+}
+
+
+def mean_or_nan(values: list[float]) -> float:
+    return sum(values) / len(values) if values else math.nan
 
 
 class EpisodeAccumulator:
-    """Collects one episode's per-slot rewards and env.step infos into one EpisodeRecord per agent."""
+    """Collects one episode into one EpisodeRecord per agent: the per-slot rewards and
+    env.step infos, plus the training events (losses, weight dispersion readings and the
+    node loads of each aggregation round)."""
 
-    def __init__(self, agent_ids: list[str]):
+    def __init__(self, agent_ids: list[str], model_bytes: int = 0):
         self.slots = 0
-        self.totals = {
-            agent_id: {"reward": 0.0, "cue_rate_mbps": 0.0, "v2v_delay_ms": 0.0, "outages": 0}
-            for agent_id in agent_ids
-        }
+        self.model_bytes = model_bytes
+        self.totals = {agent_id: dict.fromkeys(["reward", *SLOT_AVERAGES], 0.0) for agent_id in agent_ids}
+        self.losses: dict[str, list[float]] = {agent_id: [] for agent_id in agent_ids}
+        self.dispersions: list[float] = []
+        self.node_loads: dict[str, int] = {}
 
     def add(self, rewards: dict[str, float], infos: dict[str, dict]) -> None:
         self.slots += 1
         for agent_id, total in self.totals.items():
             info = infos[agent_id]
             total["reward"] += rewards[agent_id]
-            total["cue_rate_mbps"] += info["cue_rate_mbps"]
-            total["v2v_delay_ms"] += info["v2v_delay_ms"]
-            total["outages"] += info["outage"]
+            for field, key in SLOT_AVERAGES.items():
+                total[field] += info[key]
+
+    def add_loss(self, agent_id: str, loss: float) -> None:
+        self.losses[agent_id].append(loss)
+
+    def add_dispersion(self, value: float) -> None:
+        self.dispersions.append(value)
+
+    def add_aggregation(self, node_loads: dict[str, int]) -> None:
+        """One aggregation round: models each node (agents, and the BS if any) sent or received."""
+        for node, load in node_loads.items():
+            self.node_loads[node] = self.node_loads.get(node, 0) + load
 
     def records(self, episode: int) -> list[EpisodeRecord]:
         n = max(1, self.slots)
+        comm_models = sum(self.node_loads.values()) // 2  # every transfer has a sender and a receiver
         return [
             EpisodeRecord(
-                episode,
-                agent_id,
-                total["reward"],
-                total["cue_rate_mbps"] / n,
-                total["v2v_delay_ms"] / n,
-                total["outages"] / n,
+                episode=episode,
+                agent=agent_id,
+                reward=total["reward"],
+                **{field: total[field] / n for field in SLOT_AVERAGES},
+                train_loss=mean_or_nan(self.losses[agent_id]),
+                weight_dispersion=mean_or_nan(self.dispersions),
+                comm_models=comm_models,
+                comm_bytes=comm_models * self.model_bytes,
+                comm_max_load=max(self.node_loads.values(), default=0),
             )
             for agent_id, total in self.totals.items()
         ]
@@ -140,11 +190,12 @@ def run_training(
     records: list[EpisodeRecord] = []
     recent: dict[str, list[float]] = {agent_id: [] for agent_id in env.possible_agents}
     sample_counts = {agent_id: 0.0 for agent_id in env.possible_agents}
+    model_bytes = model_num_bytes(next(iter(agents.values())).online)
     global_step = 0
 
     for ep in range(episodes):
         obs, _ = env.reset(seed=episode_seed(seed, ep))
-        episode = EpisodeAccumulator(env.possible_agents)
+        episode = EpisodeAccumulator(env.possible_agents, model_bytes=model_bytes)
 
         while env.agents:
             eps = epsilon_schedule(global_step, total_steps)
@@ -152,19 +203,22 @@ def run_training(
             next_obs, rewards, _, _, infos = env.step(actions)
             for a in env.possible_agents:
                 agents[a].store_transition(obs[a], actions[a], rewards[a], next_obs[a])
-                if agents[a].learn() is not None:
+                loss = agents[a].learn()
+                if loss is not None:
                     sample_counts[a] += agents[a].batch_size
+                    episode.add_loss(a, loss)
             episode.add(rewards, infos)
             obs = next_obs
             global_step += 1
 
-            if (
-                aggregation == "fedavg"
-                and global_step % fedavg_every == 0
-                and any(sample_counts.values())
-            ):
-                fedavg_round(agents, sample_counts)
-                sample_counts = {agent_id: 0.0 for agent_id in env.possible_agents}
+            if global_step % fedavg_every == 0:
+                # Read before aggregating (right after a FedAvg round it is always 0), and at the
+                # same instants under DTE, so both methods are measured alike.
+                episode.add_dispersion(weight_dispersion(agents))
+                if aggregation == "fedavg" and any(sample_counts.values()):
+                    fedavg_round(agents, sample_counts)
+                    episode.add_aggregation(fedavg_node_loads(list(agents)))
+                    sample_counts = {agent_id: 0.0 for agent_id in env.possible_agents}
 
         for record in episode.records(ep):
             records.append(record)
@@ -184,6 +238,28 @@ def write_records_csv(records: list[EpisodeRecord], output_path: Path) -> None:
         writer = csv.writer(f)
         writer.writerow(EpisodeRecord._fields)
         writer.writerows(records)
+
+
+def run_metadata(wall_time_s: float, device: str, **settings) -> dict:
+    """A run's settings plus where and how long it ran, for the experimental-setup table."""
+    meta = {
+        **settings,
+        "wall_time_s": wall_time_s,
+        "device": device,
+        "host": platform.node(),
+        "python": platform.python_version(),
+        "torch": torch.__version__,
+    }
+    if device == "cuda":
+        meta["gpu"] = torch.cuda.get_device_name(0)
+    return meta
+
+
+def write_run_metadata(output_path: Path, metadata: dict) -> None:
+    """Writes the metadata next to the run's CSV, same name with a .json suffix."""
+    path = output_path.with_suffix(".json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(metadata, indent=2))
 
 
 def print_convergence_verdict(records: list[EpisodeRecord], episodes: int) -> None:
@@ -225,7 +301,8 @@ def main() -> None:
     params = V2VEnvParams(
         num_cues=15, num_v2v_pairs=args.num_v2v_pairs, num_power_levels=3, max_steps=200
     )
-    records, _ = run_training(
+    start = time.perf_counter()
+    records, agents = run_training(
         params,
         args.episodes,
         args.seed,
@@ -234,9 +311,23 @@ def main() -> None:
         device=device,
         aggregation=args.aggregation,
     )
+    wall_time_s = time.perf_counter() - start
 
     write_records_csv(records, args.output)
-    print(f"\nSaved: {args.output}")
+    write_run_metadata(
+        args.output,
+        run_metadata(
+            wall_time_s,
+            device,
+            method="fedavg" if args.aggregation == "fedavg" else "dte",
+            seed=args.seed,
+            episodes=args.episodes,
+            num_v2v_pairs=args.num_v2v_pairs,
+            fedavg_every=args.fedavg_every,
+            model_bytes=model_num_bytes(next(iter(agents.values())).online),
+        ),
+    )
+    print(f"\nSaved: {args.output} ({wall_time_s / 3600:.2f} h)")
     print_convergence_verdict(records, args.episodes)
 
 

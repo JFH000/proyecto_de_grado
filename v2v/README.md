@@ -14,6 +14,7 @@ descentralizada de la tesis.
 | `agents/` | D3QN con replay priorizado, FedAvg (`federated.py`) y la política Greedy |
 | `main.py` | Entrena los K agentes con FedAvg o sin agregación (DTE) |
 | `train_greedy.py` | Corre el baseline Greedy, sin entrenamiento |
+| `analysis.py` | Métricas que se calculan sobre la corrida terminada (episodios hasta converger) |
 | `jobs/` | Scripts de Slurm para Hypatia; los logs quedan en `jobs/logs/` |
 | `notebooks/` | `formulas_v2v_env.ipynb` (cada fórmula del entorno, verificada contra el código) y `results.ipynb` |
 | `tests/` | Pruebas con pytest |
@@ -51,7 +52,7 @@ uv run python train_greedy.py --episodes 4000 --seed 0 --output runs/k5/greedy_s
 | Flag | Por defecto | Qué hace |
 |---|---|---|
 | `--aggregation` | `fedavg` | `fedavg` promedia los pesos de las redes online; `none` es DTE puro |
-| `--fedavg-every` | `50` | Cada cuántos slots se agrega (solo con `fedavg`) |
+| `--fedavg-every` | `50` | Cada cuántos slots se agrega (con `fedavg`) y se mide la dispersión de pesos (con los dos) |
 | `--episodes` | `300` | Episodios de 200 slots |
 | `--seed` | `0` | Semilla de la corrida (ver abajo) |
 | `--num-v2v-pairs` | `5` | K, número de pares V2V (agentes) |
@@ -64,15 +65,34 @@ uv run python train_greedy.py --episodes 4000 --seed 0 --output runs/k5/greedy_s
 
 ### Salida
 
-Los dos scripts escriben las mismas columnas, una fila por episodio y agente:
+Los dos scripts escriben las mismas columnas, una fila por episodio y agente. Las marcadas
+«celda» son de todo el sistema y se repiten igual en las K filas del episodio.
 
 | Columna | Significado |
 |---|---|
 | `episode`, `agent` | Episodio y par V2V (`v2v_0` … `v2v_{K-1}`) |
 | `reward` | Recompensa compartida sumada sobre los 200 slots del episodio (igual para todos los agentes) |
-| `cue_rate_mbps` | Tasa promedio de las CUEs en Mbps, promediada sobre los slots |
+| `cue_rate_mbps` | Celda. Tasa promedio de las CUEs en Mbps, promediada sobre los slots |
 | `v2v_delay_ms` | Retardo de la cola de ese par por la ley de Little (Q/λ), promediado sobre los slots |
 | `outage_rate` | Fracción de slots en que ese par incumple la restricción de confiabilidad (Ec. 15) |
+| `neighbors` | Pares a 300 m o menos de ese par (fijo dentro del episodio) |
+| `co_channel_rate` | Fracción de slots en que el par transmite en un canal donde también transmite otro par. Un par a potencia 0 no ocupa el canal |
+| `channels_used` | Celda. Canales distintos con al menos un par transmitiendo, promediado sobre los slots |
+| `mean_power_ratio` | Potencia promedio del par como fracción de P_max |
+| `max_power_rate` | Fracción de slots a P_max |
+| `train_loss` | Pérdida promedio del D3QN de ese par en el episodio. `nan` si no entrenó (Greedy, o antes de llenar el primer minibatch) |
+| `weight_dispersion` | Celda. Distancia euclidiana promedio de los pesos de cada agente al promedio de todos, medida justo antes de cada ronda de agregación (en DTE, en los mismos instantes). `nan` en Greedy |
+| `comm_models` | Celda. Transferencias de un modelo entre dos nodos en el episodio. FedAvg: 2K por ronda; DTE y Greedy: 0 |
+| `comm_bytes` | Celda. `comm_models` × tamaño de un modelo (la red online: 30 397 parámetros float32 = 121 588 bytes con K y M por defecto) |
+| `comm_max_load` | Celda. Transferencias en las que participó el nodo más cargado (un vehículo o la BS). En FedAvg es la BS |
+
+Junto a cada CSV queda un JSON con el mismo nombre (`fedavg_seed0.json`) con la configuración
+de la corrida, la máquina, la GPU si la hubo y el tiempo total (`wall_time_s`).
+
+Los episodios hasta converger se calculan después, sobre la curva completa
+(`analysis.convergence_episode`): primer episodio desde el cual la media móvil de 50 episodios
+de la recompensa queda dentro de ±5 % de su valor final (el promedio del último 10 %).
+`notebooks/results.ipynb` arma las figuras y las tablas con todas estas métricas.
 
 ### Semillas
 

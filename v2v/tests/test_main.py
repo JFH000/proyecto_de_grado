@@ -1,9 +1,11 @@
 import csv
+import json
 import math
 
 import pytest
 import torch
 
+from agents.federated import fedavg_node_loads, model_num_bytes
 from v2v_env.params import V2VEnvParams
 
 from main import (
@@ -12,8 +14,10 @@ from main import (
     epsilon_schedule,
     make_agents,
     print_convergence_verdict,
+    run_metadata,
     run_training,
     write_records_csv,
+    write_run_metadata,
 )
 
 
@@ -62,7 +66,15 @@ def test_run_training_records_carry_qos_metrics():
         assert 0.0 <= r.outage_rate <= 1.0
 
 
-def slot_info(cue_rate_mbps: float, v2v_delay_ms: float, outage: bool) -> dict:
+def slot_info(
+    cue_rate_mbps: float,
+    v2v_delay_ms: float,
+    outage: bool,
+    co_channel: bool = False,
+    channels_used: int = 1,
+    power_ratio: float = 1.0,
+    neighbors: int = 1,
+) -> dict:
     # Same keys V2VEnv.step puts in each agent's info.
     return {
         "channel": 0,
@@ -70,23 +82,155 @@ def slot_info(cue_rate_mbps: float, v2v_delay_ms: float, outage: bool) -> dict:
         "cue_rate_mbps": cue_rate_mbps,
         "v2v_delay_ms": v2v_delay_ms,
         "outage": outage,
+        "power_ratio": power_ratio,
+        "max_power": power_ratio == 1.0,
+        "co_channel": co_channel,
+        "channels_used": channels_used,
+        "neighbors": neighbors,
     }
 
 
-def test_episode_accumulator_sums_reward_and_averages_metrics():
+def make_record(**overrides) -> EpisodeRecord:
+    fields = dict(
+        episode=0,
+        agent="v2v_0",
+        reward=1.0,
+        cue_rate_mbps=7.0,
+        v2v_delay_ms=0.0,
+        outage_rate=0.0,
+        neighbors=1.0,
+        co_channel_rate=0.0,
+        channels_used=1.0,
+        mean_power_ratio=1.0,
+        max_power_rate=1.0,
+        train_loss=0.5,
+        weight_dispersion=0.0,
+        comm_models=0,
+        comm_bytes=0,
+        comm_max_load=0,
+    )
+    fields.update(overrides)
+    return EpisodeRecord(**fields)
+
+
+def test_episode_accumulator_sums_reward_and_averages_slot_metrics():
     acc = EpisodeAccumulator(["v2v_0", "v2v_1"])
     acc.add(
         {"v2v_0": 1.0, "v2v_1": 1.0},
-        {"v2v_0": slot_info(8.0, 0.0, True), "v2v_1": slot_info(8.0, 4.0, False)},
+        {
+            "v2v_0": slot_info(8.0, 0.0, True, co_channel=True, channels_used=1),
+            "v2v_1": slot_info(8.0, 4.0, False, co_channel=True, channels_used=1),
+        },
     )
     acc.add(
         {"v2v_0": 3.0, "v2v_1": 3.0},
-        {"v2v_0": slot_info(6.0, 2.0, False), "v2v_1": slot_info(6.0, 0.0, False)},
+        {
+            "v2v_0": slot_info(6.0, 2.0, False, channels_used=2, power_ratio=0.5),
+            "v2v_1": slot_info(6.0, 0.0, False, channels_used=2),
+        },
     )
-    assert acc.records(episode=7) == [
-        EpisodeRecord(7, "v2v_0", 4.0, 7.0, 1.0, 0.5),
-        EpisodeRecord(7, "v2v_1", 4.0, 7.0, 2.0, 0.0),
-    ]
+    first, second = acc.records(episode=7)
+    # episode, agent, reward, cue rate, delay, outage, neighbors, co-channel, channels used, power, max power
+    assert first[:11] == (7, "v2v_0", 4.0, 7.0, 1.0, 0.5, 1.0, 0.5, 1.5, 0.75, 0.5)
+    assert second[:11] == (7, "v2v_1", 4.0, 7.0, 2.0, 0.0, 1.0, 0.5, 1.5, 1.0, 1.0)
+
+
+def test_episode_accumulator_averages_each_agents_training_loss():
+    acc = EpisodeAccumulator(["v2v_0", "v2v_1"])
+    acc.add({"v2v_0": 0.0, "v2v_1": 0.0}, {"v2v_0": slot_info(1.0, 0.0, False), "v2v_1": slot_info(1.0, 0.0, False)})
+    acc.add_loss("v2v_0", 2.0)
+    acc.add_loss("v2v_0", 4.0)
+    first, second = acc.records(episode=0)
+    assert first.train_loss == 3.0
+    assert math.isnan(second.train_loss)  # never learned this episode
+
+
+def test_episode_accumulator_counts_model_transfers_and_busiest_node():
+    acc = EpisodeAccumulator(["v2v_0", "v2v_1"], model_bytes=10)
+    acc.add({"v2v_0": 0.0, "v2v_1": 0.0}, {"v2v_0": slot_info(1.0, 0.0, False), "v2v_1": slot_info(1.0, 0.0, False)})
+    acc.add_aggregation(fedavg_node_loads(["v2v_0", "v2v_1"]))
+    acc.add_aggregation(fedavg_node_loads(["v2v_0", "v2v_1"]))
+    for record in acc.records(episode=0):
+        assert record.comm_models == 8  # 2 rounds x 2K transfers
+        assert record.comm_bytes == 80
+        assert record.comm_max_load == 8  # the BS takes part in every transfer
+
+
+def test_episode_accumulator_averages_weight_dispersion_over_measurements():
+    acc = EpisodeAccumulator(["v2v_0"])
+    acc.add({"v2v_0": 0.0}, {"v2v_0": slot_info(1.0, 0.0, False)})
+    acc.add_dispersion(1.0)
+    acc.add_dispersion(3.0)
+    assert acc.records(episode=0)[0].weight_dispersion == 2.0
+
+
+def test_episode_accumulator_without_aggregation_reports_no_traffic_and_no_dispersion():
+    acc = EpisodeAccumulator(["v2v_0"], model_bytes=10)
+    acc.add({"v2v_0": 0.0}, {"v2v_0": slot_info(1.0, 0.0, False)})
+    (record,) = acc.records(episode=0)
+    assert (record.comm_models, record.comm_bytes, record.comm_max_load) == (0, 0, 0)
+    assert math.isnan(record.weight_dispersion)
+
+
+def test_run_training_fedavg_moves_two_models_per_agent_per_round():
+    # Aggregation every slot; with batch_size 2 every agent learns from the second slot of
+    # episode 0 on, so episode 1 has 5 rounds of 2K = 4 transfers, all through the BS.
+    params = make_tiny_params()
+    records, agents = run_training(
+        params, episodes=2, seed=0, fedavg_every=1, log_every=100, agent_kwargs={"batch_size": 2}
+    )
+    model_bytes = model_num_bytes(agents["v2v_0"].online)
+    for record in (r for r in records if r.episode == 1):
+        assert record.comm_models == 20
+        assert record.comm_max_load == 20
+        assert record.comm_bytes == 20 * model_bytes
+
+
+def test_run_training_without_aggregation_moves_no_models():
+    params = make_tiny_params()
+    records, _ = run_training(
+        params,
+        episodes=2,
+        seed=0,
+        fedavg_every=1,
+        log_every=100,
+        agent_kwargs={"batch_size": 2},
+        aggregation="none",
+    )
+    assert all((r.comm_models, r.comm_bytes, r.comm_max_load) == (0, 0, 0) for r in records)
+
+
+def test_dte_agents_drift_further_apart_than_fedavg_agents():
+    # Dispersion is read just before each aggregation: under FedAvg the agents only had one slot
+    # to drift since the last round, under DTE they keep their different initializations.
+    params = make_tiny_params()
+    common = dict(episodes=3, seed=0, fedavg_every=1, log_every=100, agent_kwargs={"batch_size": 2})
+    fedavg, _ = run_training(params, **common)
+    dte, _ = run_training(params, aggregation="none", **common)
+    fedavg_dispersion = [r.weight_dispersion for r in fedavg if r.episode >= 1]
+    dte_dispersion = [r.weight_dispersion for r in dte if r.episode >= 1]
+    assert max(fedavg_dispersion) < min(dte_dispersion)
+
+
+def test_run_training_records_training_loss_once_agents_learn():
+    params = make_tiny_params()
+    records, _ = run_training(
+        params, episodes=2, seed=0, fedavg_every=2, log_every=100, agent_kwargs={"batch_size": 2}
+    )
+    for record in (r for r in records if r.episode == 1):
+        assert math.isfinite(record.train_loss)
+        assert record.train_loss >= 0
+
+
+def test_run_training_records_behaviour_metrics_in_range():
+    params = make_tiny_params()
+    records, _ = run_training(params, episodes=2, seed=1, fedavg_every=2, log_every=100)
+    for r in records:
+        assert 0.0 <= r.co_channel_rate <= 1.0
+        assert 0.0 <= r.channels_used <= params.num_cues
+        assert 0.0 <= r.mean_power_ratio <= 1.0
+        assert 0.0 <= r.max_power_rate <= 1.0
+        assert 0 <= r.neighbors <= params.num_v2v_pairs - 1
 
 
 def test_run_training_synchronizes_agents_online_weights():
@@ -129,17 +273,52 @@ def test_run_training_rejects_unknown_aggregation():
 
 
 def test_write_records_csv_round_trips(tmp_path):
-    records = [EpisodeRecord(0, "v2v_0", 1.5, 7.25, 0.5, 0.25), EpisodeRecord(0, "v2v_1", -2.0, 7.25, 0.0, 1.0)]
+    records = [make_record(reward=1.5, comm_models=4), make_record(agent="v2v_1", reward=-2.0)]
     output_path = tmp_path / "rewards.csv"
     write_records_csv(records, output_path)
     with output_path.open() as f:
         rows = list(csv.reader(f))
-    assert rows[0] == ["episode", "agent", "reward", "cue_rate_mbps", "v2v_delay_ms", "outage_rate"]
-    assert rows[1] == ["0", "v2v_0", "1.5", "7.25", "0.5", "0.25"]
+    assert rows[0] == [
+        "episode",
+        "agent",
+        "reward",
+        "cue_rate_mbps",
+        "v2v_delay_ms",
+        "outage_rate",
+        "neighbors",
+        "co_channel_rate",
+        "channels_used",
+        "mean_power_ratio",
+        "max_power_rate",
+        "train_loss",
+        "weight_dispersion",
+        "comm_models",
+        "comm_bytes",
+        "comm_max_load",
+    ]
+    assert rows[1] == ["0", "v2v_0", "1.5", "7.0", "0.0", "0.0", "1.0", "0.0", "1.0", "1.0", "1.0", "0.5", "0.0", "4", "0", "0"]
+
+
+def test_run_metadata_records_wall_time_and_where_it_ran():
+    meta = run_metadata(12.5, device="cpu", method="fedavg", seed=0)
+    assert meta["method"] == "fedavg"
+    assert meta["seed"] == 0
+    assert meta["wall_time_s"] == 12.5
+    assert meta["device"] == "cpu"
+    assert meta["host"]
+    assert meta["torch"] == torch.__version__
+    assert "gpu" not in meta  # only reported for runs on cuda
+
+
+def test_write_run_metadata_lands_next_to_the_csv(tmp_path):
+    output_path = tmp_path / "k5" / "fedavg_seed0.csv"
+    write_run_metadata(output_path, {"method": "fedavg", "wall_time_s": 3.0})
+    with (tmp_path / "k5" / "fedavg_seed0.json").open() as f:
+        assert json.load(f) == {"method": "fedavg", "wall_time_s": 3.0}
 
 
 def test_print_convergence_verdict_mentions_every_agent(capsys):
-    records = [EpisodeRecord(ep, agent, float(ep), 7.0, 0.0, 0.0) for agent in ("v2v_0", "v2v_1") for ep in range(10)]
+    records = [make_record(episode=ep, agent=agent, reward=float(ep)) for agent in ("v2v_0", "v2v_1") for ep in range(10)]
     print_convergence_verdict(records, episodes=10)
     captured = capsys.readouterr()
     assert "v2v_0" in captured.out

@@ -182,6 +182,38 @@ def test_step_info_reports_one_shared_cue_rate_in_mbps():
     assert 1.0 < rates.pop() < 50.0
 
 
+def test_step_info_reports_neighbors_within_the_neighbor_radius():
+    # A 1000 km radius makes every other pair a neighbor; a zero radius leaves every pair alone.
+    for radius_m, expected in ((1e6, 2), (0.0, 0)):
+        env = make_env(neighbor_radius_m=radius_m)
+        env.reset(seed=0)
+        _, _, _, _, infos = env.step({agent: 0 for agent in env.agents})
+        assert [info["neighbors"] for info in infos.values()] == [expected] * 3
+
+
+def test_step_info_flags_co_channel_only_between_transmitting_pairs():
+    env = make_env()
+    env.reset(seed=0)
+    levels = env.params.num_power_levels + 1
+    # Pairs 0 and 1 transmit on channel 0, pair 2 alone on channel 1.
+    _, _, _, _, infos = env.step({"v2v_0": 0 * levels + 2, "v2v_1": 0 * levels + 2, "v2v_2": 1 * levels + 2})
+    assert [infos[a]["co_channel"] for a in ("v2v_0", "v2v_1", "v2v_2")] == [True, True, False]
+    assert all(info["channels_used"] == 2 for info in infos.values())
+    # Pair 0 picks channel 0 at zero power: it does not transmit, so pair 1 is alone there.
+    _, _, _, _, infos = env.step({"v2v_0": 0 * levels + 0, "v2v_1": 0 * levels + 2, "v2v_2": 1 * levels + 2})
+    assert [infos[a]["co_channel"] for a in ("v2v_0", "v2v_1", "v2v_2")] == [False, False, False]
+    assert all(info["channels_used"] == 2 for info in infos.values())
+
+
+def test_step_info_reports_power_as_fraction_of_maximum():
+    # N_p = 2 -> levels 0, P_max/2 and P_max.
+    env = make_env()
+    env.reset(seed=0)
+    _, _, _, _, infos = env.step({"v2v_0": 0, "v2v_1": 1, "v2v_2": 2})
+    assert [infos[a]["power_ratio"] for a in ("v2v_0", "v2v_1", "v2v_2")] == [0.0, 0.5, 1.0]
+    assert [infos[a]["max_power"] for a in ("v2v_0", "v2v_1", "v2v_2")] == [False, False, True]
+
+
 def test_v2v_interference_lowers_reported_cue_rate():
     # Same seed -> same fading draws; only the V2V actions differ.
     params = V2VEnvParams(num_cues=4, num_v2v_pairs=3, num_power_levels=2)
