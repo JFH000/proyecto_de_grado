@@ -111,25 +111,34 @@ entre métodos es pareada.
 Desde la raíz del repo, en Hypatia:
 
 ```bash
-make run-greedy   # 18 trabajos de CPU: Greedy x K = 5, 10, ..., 30 x semillas 0, 1, 2
-make run-fedavg   # 18 trabajos de GPU: lo mismo con FedAvg
-make run-dte      # 18 trabajos de GPU: lo mismo con DTE
-make run-gossip   # 18 trabajos de GPU: lo mismo con gossip
+make run-greedy   # 6 trabajos de CPU: Greedy, uno por K = 5, 10, ..., 30, con las semillas 0, 1, 2
+make run-fedavg   # 6 trabajos de GPU: lo mismo con FedAvg
+make run-dte      # 6 trabajos de GPU: lo mismo con DTE
+make run-gossip   # 6 trabajos de GPU: lo mismo con gossip
 make sq           # ver la cola
 ```
 
-Cada trabajo corre `jobs/baseline.sbatch <metodo> <semilla> [episodios] [K]` y escribe
-`v2v/runs/k<K>/<metodo>_seed<semilla>.csv` y su `.json`. Mientras corre, el progreso
-(`Episode 10/4000 | ...`) aparece en `jobs/logs/slurm-v2v-<metodo>-k<K>-s<semilla>-<id>.out`.
+Cada trabajo corre `jobs/seeds.sbatch <metodo> <K> <episodios> <semillas...>`: las semillas de un
+mismo K corren a la vez, compartiendo la GPU (la red es tan pequeña que una corrida sola la deja casi
+siempre ociosa, y la QoS de Hypatia da 2 GPUs por usuario). Cada semilla es un proceso aparte,
+lanzado con `jobs/baseline.sbatch`, y deja exactamente la misma salida que si corriera sola:
+`v2v/runs/k<K>/<metodo>_seed<semilla>.csv` y su `.json`. El progreso de cada semilla
+(`Episode 10/4000 | ...`) queda en `jobs/logs/v2v-<metodo>-k<K>-s<semillas>-<id>-s<semilla>.out`;
+el `.out` del trabajo (`slurm-...`) solo dice qué semillas lanzó y cuáles fallaron.
 
 - Los targets sincronizan el entorno una sola vez antes de enviar, y los trabajos usan
   `uv run --no-sync`. Si cada trabajo sincronizara el entorno, los que arrancan al mismo tiempo
   se pisarían instalando paquetes y fallarían.
-- Saltan las corridas cuyo CSV ya existe: volver a correr el target, con `make sq` vacío,
-  relanza solo las que faltan o fallaron.
-- El límite de tiempo de FedAvg, DTE y gossip crece con K (`LEARNER_MINUTES_PER_K`, 90 min por par:
-  7.5 h con K = 5 y 45 h con K = 30). El CSV se escribe al final, así que un trabajo que se pasa del límite
-  se pierde entero.
+- Saltan las semillas cuyo CSV ya existe y las que ya están en la cola (corriendo o esperando,
+  según el nombre del trabajo), así que volver a correr el target solo envía las que faltan o
+  fallaron. Si una semilla falla, las otras del mismo trabajo siguen hasta terminar.
+- Cada trabajo pide 2 CPUs por semilla (`CPUS_PER_SEED`) y cada proceso usa solo esos hilos.
+- El límite de tiempo de FedAvg, DTE y gossip crece con K (`LEARNER_MINUTES_PER_K`, 150 min por
+  par: 12.5 h con K = 5 y 75 h con K = 30), con margen para que las semillas vayan algo más lentas
+  al compartir la GPU. El CSV se escribe al final, así que un trabajo que se pasa del límite se
+  pierde entero.
+- Para correr una sola corrida a mano: `sbatch -p gpu --gres=gpu:1 --time=750 jobs/baseline.sbatch
+  fedavg 0 4000 5` desde `v2v/`, después de un `uv sync`.
 
 Todo se puede cambiar sin editar nada:
 
