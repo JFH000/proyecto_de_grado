@@ -8,6 +8,7 @@ import torch
 from agents.federated import fedavg_node_loads, model_num_bytes
 from v2v_env.params import V2VEnvParams
 
+import main
 from main import (
     EpisodeAccumulator,
     EpisodeRecord,
@@ -365,3 +366,44 @@ def test_print_convergence_verdict_mentions_every_agent(capsys):
     captured = capsys.readouterr()
     assert "v2v_0" in captured.out
     assert "v2v_1" in captured.out
+
+
+def test_reward_scale_scales_what_agents_learn_from_but_not_the_logged_reward():
+    # 10 slots never fill a 128-sample minibatch, so nobody learns and both runs act the same.
+    params = make_tiny_params()
+    plain_records, plain_agents = run_training(params, episodes=2, seed=0, fedavg_every=2, log_every=100)
+    scaled_records, scaled_agents = run_training(
+        params, episodes=2, seed=0, fedavg_every=2, log_every=100, reward_scale=0.01
+    )
+    assert [r.reward for r in scaled_records] == [r.reward for r in plain_records]
+    for agent_id, agent in scaled_agents.items():
+        stored = agent.buffer.rewards[: len(agent.buffer)]
+        assert len(agent.buffer) == 10
+        assert stored == pytest.approx(0.01 * plain_agents[agent_id].buffer.rewards[: len(agent.buffer)])
+
+
+def test_cli_passes_buffer_capacity_and_reward_scale_and_records_them(tmp_path, monkeypatch):
+    output = tmp_path / "k2" / "fedavg_seed0.csv"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "main.py", "--episodes", "1", "--num-v2v-pairs", "2", "--device", "cpu", "--log-every", "1",
+            "--buffer-capacity", "64", "--reward-scale", "0.5", "--output", str(output),
+        ],
+    )
+    main.main()
+    meta = json.loads(output.with_suffix(".json").read_text())
+    assert meta["buffer_capacity"] == 64
+    assert meta["reward_scale"] == 0.5
+
+
+def test_cli_defaults_keep_the_agents_buffer_and_the_raw_reward(tmp_path, monkeypatch):
+    output = tmp_path / "k2" / "fedavg_seed0.csv"
+    monkeypatch.setattr(
+        "sys.argv",
+        ["main.py", "--episodes", "1", "--num-v2v-pairs", "2", "--device", "cpu", "--log-every", "1", "--output", str(output)],
+    )
+    main.main()
+    meta = json.loads(output.with_suffix(".json").read_text())
+    assert meta["buffer_capacity"] == 10_000
+    assert meta["reward_scale"] == 1.0

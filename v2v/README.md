@@ -147,6 +147,17 @@ make run-fedavg KS="5 10" SEEDS="0" EPISODES=500
 make run-fedavg SBATCH=echo   # muestra los sbatch sin enviarlos
 ```
 
+### Diagnóstico del entrenamiento
+
+`make run-diag` envía un solo trabajo de GPU (`jobs/diag.sbatch`) con cuatro variantes del
+entrenamiento de FedAvg, todas con K = 10, la semilla 0 y 2000 episodios: la configuración base, un
+replay buffer de 100 000 transiciones (`--buffer-capacity`), la recompensa multiplicada por 0.01 al
+aprender (`--reward-scale`; el CSV sigue guardando la del entorno) y las dos cosas juntas. Sirve para
+encontrar por qué FedAvg empeora cuando ε llega a su piso. Deja
+`v2v/runs/diag/<variante>/k10/fedavg_seed0.csv`, fuera de `runs/k<K>/`, así que no se mezcla con el
+barrido, y se analiza con `notebooks/diagnostico.ipynb`. K, episodios y semilla se cambian con
+`make run-diag DIAG_K=5 DIAG_EPISODES=1000 DIAG_SEED=1`.
+
 Para traer los resultados a la máquina local, desde la raíz: `make pull-runs`. Después,
 `notebooks/greedy.ipynb`, `fedavg.ipynb`, `dte.ipynb` y `gossip.ipynb` analizan el barrido de K
 (todas las métricas vs. K, con la Fig. 3 de Li et al. como referencia; FedAvg comparado con Greedy,

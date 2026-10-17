@@ -55,3 +55,32 @@ def test_importance_weights_match_formula_at_beta_one():
     expected = {0: 1.0, 1: 1.0 / 3.0}
     for idx, w in zip(indices, weights):
         assert np.isclose(w, expected[int(idx)], atol=1e-6)
+
+
+def reference_sample(priorities: np.ndarray, alpha: float, batch_size: int, beta: float, rng: np.random.Generator):
+    """The textbook PER draw the buffer has to reproduce: P(i) = p_i^a / sum p^a, drawn with
+    rng.choice, weights (N P(i))^-beta normalized by the largest weight in the buffer."""
+    scaled = priorities**alpha
+    probs = scaled / scaled.sum()
+    indices = rng.choice(priorities.size, size=batch_size, p=probs)
+    all_weights = (priorities.size * probs) ** (-beta)
+    return indices, all_weights[indices] / all_weights.max()
+
+
+def test_sample_matches_the_reference_draw_after_overwrites_and_priority_updates():
+    capacity, alpha, beta = 500, 0.6, 0.7
+    buf = PrioritizedReplayBuffer(capacity=capacity, state_dim=3, alpha=alpha, rng=np.random.default_rng(7))
+    data_rng = np.random.default_rng(1)
+    for i in range(capacity + 137):  # wraps around, so new entries take the running max priority
+        buf.add(np.full(3, float(i)), action=i % 4, reward=float(i), next_state=np.zeros(3))
+        if i % 50 == 49:
+            idx = data_rng.integers(0, len(buf), size=32)
+            buf.update_priorities(idx, data_rng.normal(scale=20.0, size=32))
+
+    reference_rng = np.random.default_rng(99)
+    buf.rng = np.random.default_rng(99)
+    for _ in range(5):
+        expected_indices, expected_weights = reference_sample(buf.priorities[: len(buf)], alpha, 64, beta, reference_rng)
+        *_, weights, indices = buf.sample(batch_size=64, beta=beta)
+        np.testing.assert_array_equal(indices, expected_indices)
+        np.testing.assert_allclose(weights, expected_weights, rtol=1e-12)

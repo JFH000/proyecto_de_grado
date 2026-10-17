@@ -20,6 +20,9 @@ class PrioritizedReplayBuffer:
         self.rewards = np.zeros(capacity, dtype=np.float64)
         self.next_states = np.zeros((capacity, state_dim), dtype=np.float64)
         self.priorities = np.zeros(capacity, dtype=np.float64)
+        # priorities ** alpha, kept up to date on every write: recomputing it over the whole buffer
+        # on every sample is what made sampling slow (O(capacity) powers per minibatch).
+        self._scaled_priorities = np.zeros(capacity, dtype=np.float64)
 
         self._pos = 0
         self._size = 0
@@ -33,18 +36,23 @@ class PrioritizedReplayBuffer:
         self.actions[idx] = action
         self.rewards[idx] = reward
         self.next_states[idx] = next_state
-        self.priorities[idx] = self.priorities[: self._size].max() if self._size > 0 else 1.0
+        self._set_priorities(np.array([idx]), self.priorities[: self._size].max() if self._size > 0 else 1.0)
 
         self._pos = (self._pos + 1) % self.capacity
         self._size = min(self._size + 1, self.capacity)
 
     def sample(self, batch_size: int, beta: float):
-        scaled_priorities = self.priorities[: self._size] ** self.alpha
+        scaled_priorities = self._scaled_priorities[: self._size]
         probs = scaled_priorities / scaled_priorities.sum()
-        indices = self.rng.choice(self._size, size=batch_size, p=probs)
+        # The same draw as self.rng.choice(self._size, size=batch_size, p=probs), without the
+        # O(capacity) validation of p that choice runs on every call.
+        cdf = probs.cumsum()
+        cdf /= cdf[-1]
+        indices = cdf.searchsorted(self.rng.random(batch_size), side="right")
 
-        all_weights = (self._size * probs) ** (-beta)
-        weights = all_weights[indices] / all_weights.max()
+        # Weights (N P(i))^-beta normalized by the largest one in the buffer. x^-beta decreases
+        # with x, so the largest belongs to the least likely transition.
+        weights = (self._size * probs[indices]) ** (-beta) / (self._size * probs.min()) ** (-beta)
 
         return (
             self.states[indices],
@@ -56,4 +64,8 @@ class PrioritizedReplayBuffer:
         )
 
     def update_priorities(self, indices: np.ndarray, td_errors: np.ndarray) -> None:
-        self.priorities[indices] = np.abs(td_errors) + self.eps
+        self._set_priorities(indices, np.abs(td_errors) + self.eps)
+
+    def _set_priorities(self, indices: np.ndarray, priorities) -> None:
+        self.priorities[indices] = priorities
+        self._scaled_priorities[indices] = self.priorities[indices] ** self.alpha

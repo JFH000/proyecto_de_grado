@@ -1,4 +1,4 @@
-.PHONY: cpu gpu sq run-greedy run-fedavg run-dte run-gossip pull-runs paper paper-watch paper-clean
+.PHONY: cpu gpu sq run-greedy run-fedavg run-dte run-gossip run-diag pull-runs paper paper-watch paper-clean
 
 cpu:
 	srun --mem=64gb --time=12:00:00 -p medium --pty bash -i
@@ -71,6 +71,20 @@ run-dte:
 
 run-gossip:
 	$(call submit,gossip,-p gpu --gres=gpu:1 --time=$$((k * $(LEARNER_MINUTES_PER_K))))
+
+# Diagnostico de la caida de FedAvg al terminar la exploracion: 4 variantes del entrenamiento
+# (base, buffer de 100 000, recompensa x 0.01 y las dos) con un K y una semilla, a la vez en una
+# GPU (jobs/diag.sbatch). Salida en v2v/runs/diag/<variante>/k<K>/, fuera del barrido; se analiza
+# con notebooks/diagnostico.ipynb. El limite de tiempo deja margen: la variante con buffer de
+# 100 000 muestrea mas lento.
+DIAG_K := 10
+DIAG_EPISODES := 2000
+DIAG_SEED := 0
+DIAG_TIME := 20:00:00
+
+run-diag:
+	cd v2v && uv sync --frozen && $(SBATCH) -p gpu --gres=gpu:1 --cpus-per-task=8 --time=$(DIAG_TIME) \
+		-J v2v-diag-k$(DIAG_K) jobs/diag.sbatch $(DIAG_K) $(DIAG_EPISODES) $(DIAG_SEED)
 
 # Trae v2v/runs/ de Hypatia a esta maquina (correr en la maquina local).
 HYPATIA_HOST := hypatia

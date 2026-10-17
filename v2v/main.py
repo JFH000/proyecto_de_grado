@@ -185,7 +185,10 @@ def run_training(
     agent_kwargs: dict | None = None,
     aggregation: str = "fedavg",
     gossip_neighbors: int | None = None,
+    reward_scale: float = 1.0,
 ) -> tuple[list[EpisodeRecord], dict[str, D3QNAgent]]:
+    """reward_scale multiplies the reward the agents store and learn from; the CSV keeps the
+    environment's reward, so runs with different scales stay comparable."""
     if aggregation not in AGGREGATIONS:
         raise ValueError(f"aggregation must be one of {AGGREGATIONS}, got {aggregation!r}")
     env = V2VEnv(params)
@@ -212,7 +215,7 @@ def run_training(
             actions = {a: agents[a].select_action(obs[a], eps) for a in env.agents}
             next_obs, rewards, _, _, infos = env.step(actions)
             for a in env.possible_agents:
-                agents[a].store_transition(obs[a], actions[a], rewards[a], next_obs[a])
+                agents[a].store_transition(obs[a], actions[a], rewards[a] * reward_scale, next_obs[a])
                 loss = agents[a].learn()
                 if loss is not None:
                     sample_counts[a] += agents[a].batch_size
@@ -308,6 +311,14 @@ def main() -> None:
         "--gossip-neighbors", type=int, default=None,
         help="Gossip only: pull at most S random neighbors per round (default: all within 300 m)",
     )
+    parser.add_argument(
+        "--buffer-capacity", type=int, default=None,
+        help="Transitions each agent's replay buffer keeps (default: D3QNAgent's, 10 000 = 50 episodes)",
+    )
+    parser.add_argument(
+        "--reward-scale", type=float, default=1.0,
+        help="Multiplies the reward the agents learn from (the CSV keeps the environment's reward)",
+    )
     parser.add_argument("--log-every", type=int, default=10)
     parser.add_argument("--output", type=Path, default=Path("runs/rewards.csv"))
     parser.add_argument(
@@ -332,8 +343,11 @@ def main() -> None:
         device=device,
         aggregation=args.aggregation,
         gossip_neighbors=args.gossip_neighbors,
+        agent_kwargs={"buffer_capacity": args.buffer_capacity} if args.buffer_capacity is not None else None,
+        reward_scale=args.reward_scale,
     )
     wall_time_s = time.perf_counter() - start
+    first_agent = next(iter(agents.values()))
 
     write_records_csv(records, args.output)
     write_run_metadata(
@@ -347,7 +361,9 @@ def main() -> None:
             num_v2v_pairs=args.num_v2v_pairs,
             aggregate_every=args.aggregate_every,
             gossip_neighbors=args.gossip_neighbors,
-            model_bytes=model_num_bytes(next(iter(agents.values())).online),
+            buffer_capacity=first_agent.buffer.capacity,
+            reward_scale=args.reward_scale,
+            model_bytes=model_num_bytes(first_agent.online),
         ),
     )
     print(f"\nSaved: {args.output} ({wall_time_s / 3600:.2f} h)")
