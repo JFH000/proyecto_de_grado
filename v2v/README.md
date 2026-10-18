@@ -49,6 +49,10 @@ uv run python main.py --aggregation gossip --episodes 4000 --seed 0 --output run
 
 # Greedy: canal con menos vecinos en el slot anterior (empates al azar), potencia máxima
 uv run python train_greedy.py --episodes 4000 --seed 0 --output runs/k5/greedy_seed0.csv
+
+# Regla de umbral (no está en el paper): el canal como Greedy; enlace fuerte a potencia máxima,
+# enlace débil callado hasta que su cola llega al 90 % de Q_max
+uv run python train_greedy.py --policy umbral --episodes 4000 --seed 0 --output runs/k5/umbral_seed0.csv
 ```
 
 ### Opciones de `main.py`
@@ -62,11 +66,18 @@ uv run python train_greedy.py --episodes 4000 --seed 0 --output runs/k5/greedy_s
 | `--seed` | `0` | Semilla de la corrida (ver abajo) |
 | `--num-v2v-pairs` | `5` | K, número de pares V2V (agentes) |
 | `--device` | `auto` | `cuda` si hay GPU, si no `cpu` |
+| `--gamma` | `0.99` | Descuento γ de los objetivos de Q-learning (el paper no lo da) |
+| `--observe-own-channel` | apagado | Agrega al estado de cada agente un one-hot del canal que eligió en el slot anterior (no está en el estado del paper; ver abajo) |
+| `--buffer-capacity` | `10000` | Transiciones que guarda el replay buffer de cada agente |
+| `--reward-scale` | `1` | Multiplica la recompensa de la que aprenden los agentes; el CSV guarda la del entorno |
+| `--hidden-sizes` | `128 128` | Ancho de cada capa oculta de la red Q; la Tabla III del paper usa `500 250 120` |
+| `--epsilon-end` | `0.05` | Piso de ε, al que llega al 60 % del entrenamiento; la Tabla III usa `0.1` |
+| `--reward-end-of-slot-queue` | apagado | El término de cola de la recompensa juzga la cola con que termina el slot, no la de su inicio (no es la Ec. 22; ver abajo) |
 | `--log-every` | `10` | Cada cuántos episodios imprime la recompensa promedio |
 | `--output` | `runs/rewards.csv` | CSV de salida |
 
-`train_greedy.py` acepta `--episodes`, `--seed`, `--num-v2v-pairs` y `--output`
-(por defecto `runs/greedy_rewards.csv`).
+`train_greedy.py` acepta `--policy` (`greedy` o `umbral`), `--episodes`, `--seed`,
+`--num-v2v-pairs` y `--output` (por defecto `runs/greedy_rewards.csv`).
 
 ### Salida
 
@@ -149,14 +160,25 @@ make run-fedavg SBATCH=echo   # muestra los sbatch sin enviarlos
 
 ### Diagnóstico del entrenamiento
 
-`make run-diag` envía un solo trabajo de GPU (`jobs/diag.sbatch`) con cuatro variantes del
-entrenamiento de FedAvg, todas con K = 10, la semilla 0 y 2000 episodios: la configuración base, un
-replay buffer de 100 000 transiciones (`--buffer-capacity`), la recompensa multiplicada por 0.01 al
-aprender (`--reward-scale`; el CSV sigue guardando la del entorno) y las dos cosas juntas. Sirve para
-encontrar por qué FedAvg empeora cuando ε llega a su piso. Deja
-`v2v/runs/diag/<variante>/k10/fedavg_seed0.csv`, fuera de `runs/k<K>/`, así que no se mezcla con el
-barrido, y se analiza con `notebooks/diagnostico.ipynb`. K, episodios y semilla se cambian con
+`make run-diag DIAG_SET=<conjunto>` envía un solo trabajo de GPU (`jobs/diag.sbatch`) que corre a la
+vez las variantes de `jobs/diag_variants/<conjunto>.txt`, todas con K = 10, la semilla 0 y 2000
+episodios. Cada línea del archivo es una variante: su nombre y las opciones de `main.py` que cambia
+(sin opciones es la configuración por defecto; `--aggregation none` o `gossip` cambian el método).
+Deja `v2v/runs/diag/<variante>/k10/<método>_seed0.csv`, fuera de `runs/k<K>/`, así que no se mezcla
+con el barrido, y se analiza con `notebooks/diagnostico.ipynb` (que lee el mismo archivo). Las
+variantes que ya tienen CSV no se vuelven a correr. K, episodios y semilla se cambian con
 `make run-diag DIAG_K=5 DIAG_EPISODES=1000 DIAG_SEED=1`.
+
+| Conjunto | Pregunta | Resultado |
+|---|---|---|
+| `caida` | ¿FedAvg se cae cuando ε llega a su piso por el buffer chico (`--buffer-capacity 100000`) o por la recompensa sin escalar (`--reward-scale 0.01`)? | No: ninguna variante deja de caerse ni le gana a Greedy |
+| `aprendizaje` | ¿El agente no encuentra la regla de umbral por la red chica (`--hidden-sizes 500 250 120`), por dejar de explorar (`--epsilon-end 0.1`) o por γ = 0.99 (`--gamma 0.9`)? | Pendiente |
+| `cola` | ¿Aprende a transmitir cuando la cola se llena si el silencio se cobra en el slot que la desborda (`--reward-end-of-slot-queue`), con γ 0.99, 0.9 o 0.5 y con el canal propio en el estado (`--observe-own-channel`)? | Pendiente |
+
+Los dos últimos conjuntos van en trabajos aparte y caben a la vez (la QoS deja 2 GPUs):
+`make run-diag DIAG_SET=aprendizaje` y `make run-diag DIAG_SET=cola`. El notebook los muestra
+juntos, con Greedy, DTE y la regla de umbral como referencias (`make run-umbral` la corre para todo
+K en CPU).
 
 Para traer los resultados a la máquina local, desde la raíz: `make pull-runs`. Después,
 `notebooks/greedy.ipynb`, `fedavg.ipynb`, `dte.ipynb` y `gossip.ipynb` analizan el barrido de K
@@ -195,10 +217,37 @@ término de tasa CUE valía ~3×10⁷ por slot y A = −10 no afectaba nada.
 unidades de 10 dB, y la cola como fracción de Q_max (`encode_channel_gain` en
 `v2v_env/env.py`). No cambia el MDP, solo la escala de las entradas de la red.
 
+**Canal propio en el estado (opcional, apagado por defecto).** Con `--observe-own-channel`
+(`V2VEnvParams.observe_own_channel`), el estado agrega un one-hot del canal que el par eligió en el
+slot anterior, entre los conteos de vecinos y la cola: 4M + 1 entradas en vez de las 3M + 1 del
+paper. Los conteos del paper excluyen al propio par, así que sin esto un agente no distingue el
+canal que está usando de uno que nadie usa, y no puede aprender a quedarse en un canal que ningún
+vecino tomó. Con políticas fijas, K = 10 y 20 episodios, quedarse en el canal mientras ningún vecino
+lo use y saltar a uno libre si alguno lo toma sube la recompensa ~20 % frente a Greedy (más con
+K = 20). No cambia la dinámica ni la recompensa: con las mismas acciones, el entorno da lo mismo
+con y sin esta opción.
+
 **Parámetros que el paper no da.** A, p_o, R_min, la tasa de llegada λ, la duración del
-slot τ y la geometría de la celda están en `v2v_env/params.py`, marcados como tales. Con
-λ = 1 Mbps la cola casi nunca crece (retardo de ~1 ms frente a un máximo de 100 ms), así
-que la restricción de cola casi nunca se activa.
+slot τ y la geometría de la celda están en `v2v_env/params.py`, marcados como tales. La Tabla III
+tampoco da el descuento γ de D3QN: `D3QNAgent` usa 0.99 y `--gamma` lo cambia. Con λ = 1 Mbps y
+potencia máxima, la cola se vacía en cada slot (retardo de ~0 ms frente a un máximo de 100 ms). La
+restricción de cola solo se activa cuando un par deja de transmitir: con potencia cero la cola llega
+a Q_max en 100 slots, y ese es el único costo que frena a un par de callarse para proteger al CUE de
+su canal.
+
+**Cola al final del slot (opcional, apagado por defecto).** Con `--reward-end-of-slot-queue`
+(`V2VEnvParams.reward_end_of_slot_queue`), el término de cola de la recompensa juzga la cola que
+deja el slot en vez de Q_k^t, la de su inicio. En la Ec. 22 la acción de un slot no cambia su propio
+término de cola: el slot de silencio que llena la cola lo paga el siguiente. Con la opción lo paga
+el mismo slot. Las observaciones, las métricas (el retardo sigue saliendo de Q_k^t) y la dinámica no
+cambian.
+
+**Regla de umbral (`agents/threshold_policy.py`, no está en el paper).** Una referencia sin
+entrenar, solo con información local: el canal como Greedy, potencia máxima si el enlace propio es
+fuerte (ganancia media sobre los canales de −91 dB o más, la de un enlace de 25 m) y silencio si es
+débil, hasta que la cola llega al 90 % de Q_max. Le gana a Greedy con todo K porque calla a los
+enlaces que interfieren al CUE más de lo que ganan en fiabilidad, sin dejar que sus colas se
+desborden. Muestra que hay algo que aprender: un agente que no la alcanza no está aprendiendo bien.
 
 ### Por qué esto no es HFRL "de libro"
 

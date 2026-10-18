@@ -2,7 +2,7 @@
 # Varias semillas de un mismo metodo y K en un solo trabajo, compartiendo la GPU: la red es tan
 # pequena que una sola corrida deja la GPU casi siempre ociosa. Cada semilla es un proceso aparte,
 # lanzado con jobs/baseline.sbatch, asi que deja exactamente la misma salida que un trabajo propio.
-#   sbatch [opciones de particion] jobs/seeds.sbatch <fedavg|dte|gossip|greedy> <K> <episodios> <semilla>...
+#   sbatch [opciones de particion] jobs/seeds.sbatch <fedavg|dte|gossip|greedy|umbral> <K> <episodios> <semilla>...
 # `make run-<metodo>` (raiz del repo) lo usa para lanzar el barrido de K: un trabajo por K, con
 # --cpus-per-task = 2 por semilla. El entorno tiene que estar sincronizado antes (`uv sync`, que los
 # targets del Makefile ya hacen).
@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-METHOD=${1:?falta el metodo: fedavg, dte, gossip o greedy}
+METHOD=${1:?falta el metodo: fedavg, dte, gossip, greedy o umbral}
 K=${2:?falta K}
 EPISODES=${3:?faltan los episodios}
 shift 3

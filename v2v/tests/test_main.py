@@ -407,3 +407,88 @@ def test_cli_defaults_keep_the_agents_buffer_and_the_raw_reward(tmp_path, monkey
     meta = json.loads(output.with_suffix(".json").read_text())
     assert meta["buffer_capacity"] == 10_000
     assert meta["reward_scale"] == 1.0
+
+
+def test_cli_passes_gamma_to_the_agents_and_records_it(tmp_path, monkeypatch):
+    output = tmp_path / "k2" / "fedavg_seed0.csv"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "main.py", "--episodes", "1", "--num-v2v-pairs", "2", "--device", "cpu", "--log-every", "1",
+            "--gamma", "0.5", "--output", str(output),
+        ],
+    )
+    main.main()
+    meta = json.loads(output.with_suffix(".json").read_text())
+    assert meta["gamma"] == 0.5
+
+
+def test_cli_default_gamma_is_the_agents_and_is_recorded(tmp_path, monkeypatch):
+    output = tmp_path / "k2" / "fedavg_seed0.csv"
+    monkeypatch.setattr(
+        "sys.argv",
+        ["main.py", "--episodes", "1", "--num-v2v-pairs", "2", "--device", "cpu", "--log-every", "1", "--output", str(output)],
+    )
+    main.main()
+    meta = json.loads(output.with_suffix(".json").read_text())
+    assert meta["gamma"] == 0.99
+
+
+def test_cli_observe_own_channel_widens_the_agents_input_and_is_recorded(tmp_path, monkeypatch):
+    output = tmp_path / "k2" / "fedavg_seed0.csv"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "main.py", "--episodes", "1", "--num-v2v-pairs", "2", "--device", "cpu", "--log-every", "1",
+            "--observe-own-channel", "--output", str(output),
+        ],
+    )
+    main.main()
+    meta = json.loads(output.with_suffix(".json").read_text())
+    assert meta["observe_own_channel"] is True
+
+
+def test_cli_default_keeps_the_papers_state_and_records_it(tmp_path, monkeypatch):
+    output = tmp_path / "k2" / "fedavg_seed0.csv"
+    monkeypatch.setattr(
+        "sys.argv",
+        ["main.py", "--episodes", "1", "--num-v2v-pairs", "2", "--device", "cpu", "--log-every", "1", "--output", str(output)],
+    )
+    main.main()
+    meta = json.loads(output.with_suffix(".json").read_text())
+    assert meta["observe_own_channel"] is False
+
+
+def test_epsilon_schedule_decays_to_the_given_floor():
+    assert epsilon_schedule(100, total_steps=100, end=0.1) == 0.1
+    assert epsilon_schedule(30, total_steps=100, end=0.1) == 1.0 + (0.1 - 1.0) * 30 / 60
+
+
+def test_cli_passes_network_exploration_floor_and_queue_reward_and_records_them(tmp_path, monkeypatch):
+    output = tmp_path / "k2" / "fedavg_seed0.csv"
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "main.py", "--episodes", "1", "--num-v2v-pairs", "2", "--device", "cpu", "--log-every", "1",
+            "--hidden-sizes", "50", "25", "12", "--epsilon-end", "0.1", "--reward-end-of-slot-queue",
+            "--output", str(output),
+        ],
+    )
+    main.main()
+    meta = json.loads(output.with_suffix(".json").read_text())
+    assert meta["hidden_sizes"] == [50, 25, 12]
+    assert meta["epsilon_end"] == 0.1
+    assert meta["reward_end_of_slot_queue"] is True
+
+
+def test_cli_defaults_for_network_exploration_floor_and_queue_reward_are_recorded(tmp_path, monkeypatch):
+    output = tmp_path / "k2" / "fedavg_seed0.csv"
+    monkeypatch.setattr(
+        "sys.argv",
+        ["main.py", "--episodes", "1", "--num-v2v-pairs", "2", "--device", "cpu", "--log-every", "1", "--output", str(output)],
+    )
+    main.main()
+    meta = json.loads(output.with_suffix(".json").read_text())
+    assert meta["hidden_sizes"] == [128, 128]
+    assert meta["epsilon_end"] == 0.05
+    assert meta["reward_end_of_slot_queue"] is False

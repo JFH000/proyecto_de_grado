@@ -46,6 +46,18 @@ class V2VEnvParams:
     channel_gain_ref_db: float = -100.0  # channel coefficients are observed as (dB - ref) / scale
     channel_gain_scale_db: float = 10.0
 
+    # --- Extension of the paper's state (off by default, i.e. the paper's 3M + 1 features) ---
+    # One-hot of the channel this pair picked in the last slot, between the neighbor counts and the
+    # queue. The paper's counts exclude the pair itself, so without it an agent cannot tell the
+    # channel it is using from one nobody uses, and cannot learn to stay on a channel no neighbor took.
+    observe_own_channel: bool = False
+
+    # --- Deviation from the paper's reward timing (off by default) ---
+    # Eq. 22 judges Q_k^t, the queue at the start of the slot, which this slot's action cannot
+    # change: the cost of staying silent shows up one slot later. With this on, the queue term
+    # judges the queue the slot leaves, so the slot whose silence overflows the queue pays for it.
+    reward_end_of_slot_queue: bool = False
+
     max_queue_length_bits: float = field(init=False)  # Q_max, derived via Little's law (Eq. 18)
 
     def __post_init__(self) -> None:
@@ -57,4 +69,4 @@ class V2VEnvParams:
 
     @property
     def state_dim(self) -> int:
-        return 3 * self.num_cues + 1
+        return (4 if self.observe_own_channel else 3) * self.num_cues + 1

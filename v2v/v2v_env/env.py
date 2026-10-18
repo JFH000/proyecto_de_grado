@@ -46,10 +46,11 @@ class V2VEnv(ParallelEnv):
 
     @functools.lru_cache(maxsize=None)
     def observation_space(self, agent):
-        m = self.params.num_cues
-        # Encoded channel gains (first 2M entries) are signed; neighbor counts and queue are not.
-        low = np.concatenate([np.full(2 * m, -np.inf), np.zeros(m + 1)])
-        return Box(low=low, high=np.inf, shape=(self.params.state_dim,), dtype=np.float64)
+        m, dim = self.params.num_cues, self.params.state_dim
+        # Encoded channel gains (first 2M entries) are signed; neighbor counts, the own-channel
+        # one-hot (if observed) and the queue are not.
+        low = np.concatenate([np.full(2 * m, -np.inf), np.zeros(dim - 2 * m)])
+        return Box(low=low, high=np.inf, shape=(dim,), dtype=np.float64)
 
     @functools.lru_cache(maxsize=None)
     def action_space(self, agent):
@@ -117,16 +118,15 @@ class V2VEnv(ParallelEnv):
         h_own = encode_channel_gain(self._h_own, ref_db, scale_db)
         h_cue = encode_channel_gain(self._h_cue, ref_db, scale_db)
         queue = self._queue / self.params.max_queue_length_bits
+        own_channel = np.zeros((self.params.num_v2v_pairs, self.params.num_cues))
+        picked = self._prev_channels >= 0  # no channel picked before the first slot
+        own_channel[np.flatnonzero(picked), self._prev_channels[picked]] = 1.0
         obs = {}
         for i, agent in enumerate(self.possible_agents):
-            obs[agent] = np.concatenate(
-                [
-                    h_own[i],
-                    h_cue,
-                    neighbor_counts[i].astype(np.float64),
-                    [queue[i]],
-                ]
-            )
+            features = [h_own[i], h_cue, neighbor_counts[i].astype(np.float64)]
+            if self.params.observe_own_channel:
+                features.append(own_channel[i])
+            obs[agent] = np.concatenate([*features, [queue[i]]])
         return obs
 
     def step(self, actions: dict):
@@ -184,10 +184,18 @@ class V2VEnv(ParallelEnv):
                 self.params.outage_probability_threshold,
             )
 
+        next_queue = np.array(
+            [
+                physics.update_queue(
+                    self._queue[i], self.params.v2v_arrival_rate_bps, self.params.slot_duration_s, v2v_rates[i]
+                )
+                for i in range(k)
+            ]
+        )
         shared_reward = compute_reward(
             cue_rates=cue_rates,
             cue_min_rate_bps=self.params.cue_min_rate_bps,
-            v2v_queues=self._queue,
+            v2v_queues=next_queue if self.params.reward_end_of_slot_queue else self._queue,
             max_queue_length_bits=self.params.max_queue_length_bits,
             reliability_margins=reliability_margins,
             reliability_threshold=physics.reliability_threshold(
@@ -197,8 +205,9 @@ class V2VEnv(ParallelEnv):
             penalty=self.params.penalty_constant,
         )
 
-        # QoS metrics for logging, taken from the same quantities the reward judged:
-        # delay via Little's law on Q_k^t (so delay > D_max <=> Q_k^t > Q_max), outage where Eq. 15 fails.
+        # QoS metrics for logging, taken from the quantities the paper's reward judges: delay via
+        # Little's law on Q_k^t, the queue at the start of the slot (so delay > D_max <=> Q_k^t > Q_max),
+        # also with reward_end_of_slot_queue, so runs with and without it compare alike; outage where Eq. 15 fails.
         cue_rate_mbps = float(cue_rates.mean() / 1e6)
         v2v_delay_ms = self._queue / self.params.v2v_arrival_rate_bps * 1e3
 
@@ -210,14 +219,7 @@ class V2VEnv(ParallelEnv):
         max_power_w = self._power_levels_w[-1]
         neighbor_counts = self._neighbor_mask.sum(axis=1)
 
-        self._queue = np.array(
-            [
-                physics.update_queue(
-                    self._queue[i], self.params.v2v_arrival_rate_bps, self.params.slot_duration_s, v2v_rates[i]
-                )
-                for i in range(k)
-            ]
-        )
+        self._queue = next_queue
         self._prev_channels = channels
         self._h_own, self._h_cue = self._draw_observation_fading()
 

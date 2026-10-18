@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -25,6 +27,7 @@ class D3QNAgent:
         state_dim: int,
         action_dim: int,
         hidden_dim: int = 128,
+        hidden_sizes: Sequence[int] | None = None,
         lr: float = 1e-3,
         gamma: float = 0.99,
         buffer_capacity: int = 10_000,
@@ -55,8 +58,8 @@ class D3QNAgent:
             self.rng = np.random.default_rng()
             buffer_rng = np.random.default_rng()
 
-        self.online = DuelingQNetwork(state_dim, action_dim, hidden_dim).to(self.device)
-        self.target = DuelingQNetwork(state_dim, action_dim, hidden_dim).to(self.device)
+        self.online = DuelingQNetwork(state_dim, action_dim, hidden_dim, hidden_sizes).to(self.device)
+        self.target = DuelingQNetwork(state_dim, action_dim, hidden_dim, hidden_sizes).to(self.device)
         self.target.load_state_dict(self.online.state_dict())
 
         self.optimizer = torch.optim.Adam(self.online.parameters(), lr=lr)

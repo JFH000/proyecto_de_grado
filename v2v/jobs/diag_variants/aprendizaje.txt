@@ -1,0 +1,11 @@
+# Tercer diagnostico (oct. 2026), parte 1: lo que la Tabla III del paper fija y aqui no se usaba
+# (red de 500, 250 y 120 neuronas; epsilon final 0.1), y el descuento gamma, que el paper no da.
+# Pregunta: el agente no encuentra la regla de umbral (enlace fuerte a potencia maxima, enlace debil
+# callado hasta que la cola se llena) porque la red es chica, porque deja de explorar demasiado o
+# porque con gamma = 0.99 el costo de callarse queda enterrado en valores Q de miles?
+# base (la configuracion de siempre) ya corrio en el conjunto caida: no se vuelve a correr.
+base
+gamma0.9 --gamma 0.9
+red-paper --hidden-sizes 500 250 120
+eps0.1 --epsilon-end 0.1
+paper-todo --gamma 0.9 --hidden-sizes 500 250 120 --epsilon-end 0.1

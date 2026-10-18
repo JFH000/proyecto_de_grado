@@ -16,6 +16,8 @@ METHODS = {
     "dte": {"label": "DTE (sin federar)", "color": "#eb6834", "linestyle": "-", "marker": "s"},
     "greedy": {"label": "Greedy", "color": "#1baf7a", "linestyle": "--", "marker": "^"},
     "gossip": {"label": "Gossip", "color": "#eda100", "linestyle": "-", "marker": "D"},
+    # Not a method of the paper: the threshold rule of agents/threshold_policy.py, dashed like Greedy.
+    "umbral": {"label": "Regla de umbral", "color": "#8a4fd6", "linestyle": "--", "marker": "v"},
 }
 LABELS = {
     "reward": "Recompensa por episodio",

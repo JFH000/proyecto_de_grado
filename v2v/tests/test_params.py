@@ -20,3 +20,8 @@ def test_state_dim_matches_3m_plus_1():
 def test_max_queue_length_derived_from_arrival_rate_and_max_delay():
     params = V2VEnvParams(v2v_arrival_rate_bps=2.0e6, max_tolerable_delay_s=0.1)
     assert params.max_queue_length_bits == 2.0e6 * 0.1
+
+
+def test_state_dim_adds_one_feature_per_channel_when_observing_own_channel():
+    params = V2VEnvParams(num_cues=15, observe_own_channel=True)
+    assert params.state_dim == 4 * 15 + 1

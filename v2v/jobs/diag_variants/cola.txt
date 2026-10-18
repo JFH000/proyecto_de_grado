@@ -1,0 +1,11 @@
+# Tercer diagnostico (oct. 2026), parte 2: callarse le conviene a casi todo par en el slot mismo
+# (protege al CUE de su canal), y lo que cuesta, la cola llena, la recompensa del paper lo cobra un
+# slot despues. Con --reward-end-of-slot-queue lo cobra en el slot que lo causa.
+# Pregunta: con ese costo a la vista, el agente aprende a transmitir cuando la cola se llena y deja
+# de caerse? Con gamma 0.5 los valores Q quedan en ~2 veces la recompensa por slot, no en ~100.
+# base (la configuracion de siempre) ya corrio en el conjunto caida: no se vuelve a correr.
+base
+cola-fin --reward-end-of-slot-queue
+cola-fin-gamma0.9 --reward-end-of-slot-queue --gamma 0.9
+cola-fin-gamma0.5 --reward-end-of-slot-queue --gamma 0.5
+cola-fin-gamma0.5-canal --reward-end-of-slot-queue --gamma 0.5 --observe-own-channel

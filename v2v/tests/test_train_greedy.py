@@ -60,3 +60,17 @@ def test_run_greedy_neither_trains_nor_shares_models():
         assert math.isnan(r.train_loss)
         assert math.isnan(r.weight_dispersion)
         assert (r.comm_models, r.comm_bytes, r.comm_max_load) == (0, 0, 0)
+
+
+def test_cli_policy_option_names_the_method_in_the_metadata(tmp_path, monkeypatch):
+    import json
+
+    import train_greedy
+
+    output = tmp_path / "k2" / "umbral_seed0.csv"
+    monkeypatch.setattr(
+        "sys.argv",
+        ["train_greedy.py", "--episodes", "1", "--num-v2v-pairs", "2", "--policy", "umbral", "--output", str(output)],
+    )
+    train_greedy.main()
+    assert json.loads(output.with_suffix(".json").read_text())["method"] == "umbral"

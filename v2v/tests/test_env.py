@@ -313,3 +313,71 @@ def test_random_action_episode_runs_without_nan_or_inf_rewards():
             assert np.all(np.isfinite(agent_obs))
         step += 1
     assert step == 20
+
+
+def test_own_channel_feature_is_a_one_hot_of_the_last_slots_channel_and_the_queue_stays_last():
+    env = make_env(observe_own_channel=True)
+    m, levels = env.params.num_cues, env.params.num_power_levels + 1
+    obs, _ = env.reset(seed=0)
+    for agent_obs in obs.values():
+        assert agent_obs.shape == (4 * m + 1,)
+        assert (agent_obs[3 * m : 4 * m] == 0).all()  # no channel picked yet
+        assert agent_obs[-1] == 0.0  # queue
+    # Pair 0 picks channel 2 at zero power: it does not transmit, but it did pick the channel.
+    obs, _, _, _, _ = env.step({"v2v_0": 2 * levels, "v2v_1": 1 * levels + 2, "v2v_2": 3 * levels + 1})
+    for agent, channel in (("v2v_0", 2), ("v2v_1", 1), ("v2v_2", 3)):
+        assert obs[agent][3 * m : 4 * m].tolist() == [1.0 if c == channel else 0.0 for c in range(m)]
+    assert np.isclose(obs["v2v_0"][-1], 0.01)  # the silent pair's queue grew by one slot of arrivals
+
+
+def test_own_channel_feature_leaves_the_papers_features_unchanged():
+    plain, extended = make_env(), make_env(observe_own_channel=True)
+    m = plain.params.num_cues
+    obs_plain, _ = plain.reset(seed=4)
+    obs_ext, _ = extended.reset(seed=4)
+    actions = {"v2v_0": 1, "v2v_1": 5, "v2v_2": 8}
+    for _ in range(3):
+        for agent in obs_plain:
+            assert np.array_equal(obs_ext[agent][: 3 * m], obs_plain[agent][: 3 * m])
+            assert obs_ext[agent][-1] == obs_plain[agent][-1]
+        obs_plain, rewards_plain, _, _, _ = plain.step(actions)
+        obs_ext, rewards_ext, _, _, _ = extended.step(actions)
+        assert rewards_plain == rewards_ext
+
+
+def test_observations_with_own_channel_lie_in_observation_space():
+    env = make_env(observe_own_channel=True)
+    obs, _ = env.reset(seed=0)
+    obs, _, _, _, _ = env.step({agent: 1 for agent in env.agents})
+    for agent, agent_obs in obs.items():
+        assert env.observation_space(agent).contains(agent_obs)
+
+
+def test_end_of_slot_queue_reward_charges_the_overflow_in_the_slot_that_causes_it():
+    # Q_max = 1e6 bps x 1 ms = 1000 bits, exactly one slot of arrivals. At zero power the queue
+    # starts the slot empty and ends it full: the paper's reward (queue at the start of the slot)
+    # still sees full headroom, U(1) = 1; on the end-of-slot queue the margin is 0, U(0) = A.
+    kwargs = dict(max_tolerable_delay_s=1e-3)
+    paper, end = make_env(**kwargs), make_env(reward_end_of_slot_queue=True, **kwargs)
+    paper.reset(seed=0)
+    end.reset(seed=0)
+    zero_power = {agent: 0 for agent in paper.agents}
+    _, rewards_paper, _, _, infos_paper = paper.step(zero_power)
+    _, rewards_end, _, _, infos_end = end.step(zero_power)
+    lambda2, penalty, k = paper.params.reward_weights[1], paper.params.penalty_constant, 3
+    assert np.isclose(rewards_paper["v2v_0"] - rewards_end["v2v_0"], k * lambda2 * (1.0 - penalty))
+    # The logged delay stays the paper's (queue at the start of the slot), so variants compare alike.
+    assert [i["v2v_delay_ms"] for i in infos_paper.values()] == [i["v2v_delay_ms"] for i in infos_end.values()]
+
+
+def test_end_of_slot_queue_reward_changes_nothing_but_the_reward():
+    paper, end = make_env(), make_env(reward_end_of_slot_queue=True)
+    obs_paper, _ = paper.reset(seed=2)
+    obs_end, _ = end.reset(seed=2)
+    actions = {"v2v_0": 2, "v2v_1": 7, "v2v_2": 0}
+    for _ in range(4):
+        obs_paper, _, _, _, infos_paper = paper.step(actions)
+        obs_end, _, _, _, infos_end = end.step(actions)
+        for agent in obs_paper:
+            assert np.array_equal(obs_paper[agent], obs_end[agent])
+        assert infos_paper == infos_end

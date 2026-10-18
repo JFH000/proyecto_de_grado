@@ -1,6 +1,6 @@
 #!/bin/bash
 # Una corrida: un metodo, una semilla y un K por trabajo.
-#   sbatch [opciones de particion] jobs/baseline.sbatch <fedavg|dte|gossip|greedy> <semilla> [episodios] [K]
+#   sbatch [opciones de particion] jobs/baseline.sbatch <fedavg|dte|gossip|greedy|umbral> <semilla> [episodios] [K]
 # Particion, GPU y tiempo se pasan al enviar; `make run-<metodo>` (raiz del repo) lanza el barrido
 # de K. El entorno tiene que estar sincronizado antes (`uv sync`, que los targets
 # del Makefile ya hacen): el trabajo usa `uv run --no-sync` para no tocarlo mientras otros corren.
@@ -15,7 +15,7 @@
 set -euo pipefail
 export PYTHONUNBUFFERED=1  # el progreso ("Episode ...") aparece en el .out mientras corre
 
-METHOD=${1:?falta el metodo: fedavg, dte, gossip o greedy}
+METHOD=${1:?falta el metodo: fedavg, dte, gossip, greedy o umbral}
 SEED=${2:?falta la semilla}
 EPISODES=${3:-4000}
 K=${4:-5}
@@ -36,7 +36,10 @@ case "$METHOD" in
   greedy)
     uv run --no-sync python train_greedy.py --seed "$SEED" --episodes "$EPISODES" \
       --num-v2v-pairs "$K" --output "$OUT" ;;
+  umbral)
+    uv run --no-sync python train_greedy.py --policy umbral --seed "$SEED" --episodes "$EPISODES" \
+      --num-v2v-pairs "$K" --output "$OUT" ;;
   *)
-    echo "metodo desconocido: ${METHOD} (usa fedavg, dte, gossip o greedy)" >&2
+    echo "metodo desconocido: ${METHOD} (usa fedavg, dte, gossip, greedy o umbral)" >&2
     exit 1 ;;
 esac

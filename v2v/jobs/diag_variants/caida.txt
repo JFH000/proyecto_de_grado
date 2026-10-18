@@ -1,0 +1,6 @@
+# Primer diagnostico (oct. 2026): por que FedAvg se cae cuando epsilon llega a su piso.
+# Resultado: ninguna variante arregla la caida (notebooks/diagnostico.ipynb).
+base
+buffer100k --buffer-capacity 100000
+reward0.01 --reward-scale 0.01
+ambos --buffer-capacity 100000 --reward-scale 0.01

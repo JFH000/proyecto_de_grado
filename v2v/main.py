@@ -186,9 +186,11 @@ def run_training(
     aggregation: str = "fedavg",
     gossip_neighbors: int | None = None,
     reward_scale: float = 1.0,
+    epsilon_end: float = 0.05,
 ) -> tuple[list[EpisodeRecord], dict[str, D3QNAgent]]:
     """reward_scale multiplies the reward the agents store and learn from; the CSV keeps the
-    environment's reward, so runs with different scales stay comparable."""
+    environment's reward, so runs with different scales stay comparable. epsilon_end is the
+    exploration floor, reached at 60 % of the training (epsilon_schedule)."""
     if aggregation not in AGGREGATIONS:
         raise ValueError(f"aggregation must be one of {AGGREGATIONS}, got {aggregation!r}")
     env = V2VEnv(params)
@@ -211,7 +213,7 @@ def run_training(
         episode = EpisodeAccumulator(env.possible_agents, model_bytes=model_bytes)
 
         while env.agents:
-            eps = epsilon_schedule(global_step, total_steps)
+            eps = epsilon_schedule(global_step, total_steps, end=epsilon_end)
             actions = {a: agents[a].select_action(obs[a], eps) for a in env.agents}
             next_obs, rewards, _, _, infos = env.step(actions)
             for a in env.possible_agents:
@@ -319,6 +321,28 @@ def main() -> None:
         "--reward-scale", type=float, default=1.0,
         help="Multiplies the reward the agents learn from (the CSV keeps the environment's reward)",
     )
+    parser.add_argument(
+        "--gamma", type=float, default=None,
+        help="Discount factor of the agents' Q-learning targets (default: D3QNAgent's, 0.99)",
+    )
+    parser.add_argument(
+        "--hidden-sizes", type=int, nargs="+", default=None,
+        help="Width of each hidden layer of the Q-network (default: two of 128; the paper's Table III uses 500 250 120)",
+    )
+    parser.add_argument(
+        "--epsilon-end", type=float, default=0.05,
+        help="Exploration floor, reached at 60%% of the training (the paper's Table III uses 0.1)",
+    )
+    parser.add_argument(
+        "--reward-end-of-slot-queue", action="store_true",
+        help="Judge the reward's queue term on the queue each slot leaves, not the one it starts with "
+        "(V2VEnvParams.reward_end_of_slot_queue; not the paper's Eq. 22)",
+    )
+    parser.add_argument(
+        "--observe-own-channel", action="store_true",
+        help="Add to each agent's state a one-hot of the channel it picked in the last slot "
+        "(V2VEnvParams.observe_own_channel; not part of the paper's state)",
+    )
     parser.add_argument("--log-every", type=int, default=10)
     parser.add_argument("--output", type=Path, default=Path("runs/rewards.csv"))
     parser.add_argument(
@@ -331,8 +355,23 @@ def main() -> None:
     print(f"Using device: {device} | aggregation: {args.aggregation}")
 
     params = V2VEnvParams(
-        num_cues=15, num_v2v_pairs=args.num_v2v_pairs, num_power_levels=3, max_steps=200
+        num_cues=15,
+        num_v2v_pairs=args.num_v2v_pairs,
+        num_power_levels=3,
+        max_steps=200,
+        observe_own_channel=args.observe_own_channel,
+        reward_end_of_slot_queue=args.reward_end_of_slot_queue,
     )
+    # Only the options given on the command line; the rest keep D3QNAgent's defaults.
+    agent_kwargs = {
+        name: value
+        for name, value in (
+            ("buffer_capacity", args.buffer_capacity),
+            ("gamma", args.gamma),
+            ("hidden_sizes", args.hidden_sizes),
+        )
+        if value is not None
+    }
     start = time.perf_counter()
     records, agents = run_training(
         params,
@@ -343,8 +382,9 @@ def main() -> None:
         device=device,
         aggregation=args.aggregation,
         gossip_neighbors=args.gossip_neighbors,
-        agent_kwargs={"buffer_capacity": args.buffer_capacity} if args.buffer_capacity is not None else None,
+        agent_kwargs=agent_kwargs,
         reward_scale=args.reward_scale,
+        epsilon_end=args.epsilon_end,
     )
     wall_time_s = time.perf_counter() - start
     first_agent = next(iter(agents.values()))
@@ -362,6 +402,11 @@ def main() -> None:
             aggregate_every=args.aggregate_every,
             gossip_neighbors=args.gossip_neighbors,
             buffer_capacity=first_agent.buffer.capacity,
+            gamma=first_agent.gamma,
+            observe_own_channel=params.observe_own_channel,
+            reward_end_of_slot_queue=params.reward_end_of_slot_queue,
+            hidden_sizes=list(first_agent.online.hidden_sizes),
+            epsilon_end=args.epsilon_end,
             reward_scale=args.reward_scale,
             model_bytes=model_num_bytes(first_agent.online),
         ),
