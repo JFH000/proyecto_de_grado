@@ -73,6 +73,7 @@ uv run python train_greedy.py --policy umbral --episodes 4000 --seed 0 --output 
 | `--hidden-sizes` | `128 128` | Ancho de cada capa oculta de la red Q; la Tabla III del paper usa `500 250 120` |
 | `--epsilon-end` | `0.05` | Piso de ε, al que llega al 60 % del entrenamiento; la Tabla III usa `0.1` |
 | `--reward-end-of-slot-queue` | apagado | El término de cola de la recompensa juzga la cola con que termina el slot, no la de su inicio (no es la Ec. 22; ver abajo) |
+| `--local-reward` | apagado | Cada agente aprende de su propia recompensa (su cola, su confiabilidad y el CUE de su canal) en vez de la compartida; el CSV guarda la compartida (no es la Ec. 22; ver abajo) |
 | `--log-every` | `10` | Cada cuántos episodios imprime la recompensa promedio |
 | `--output` | `runs/rewards.csv` | CSV de salida |
 
@@ -172,13 +173,14 @@ variantes que ya tienen CSV no se vuelven a correr. K, episodios y semilla se ca
 | Conjunto | Pregunta | Resultado |
 |---|---|---|
 | `caida` | ¿FedAvg se cae cuando ε llega a su piso por el buffer chico (`--buffer-capacity 100000`) o por la recompensa sin escalar (`--reward-scale 0.01`)? | No: ninguna variante deja de caerse ni le gana a Greedy |
-| `aprendizaje` | ¿El agente no encuentra la regla de umbral por la red chica (`--hidden-sizes 500 250 120`), por dejar de explorar (`--epsilon-end 0.1`) o por γ = 0.99 (`--gamma 0.9`)? | Pendiente |
-| `cola` | ¿Aprende a transmitir cuando la cola se llena si el silencio se cobra en el slot que la desborda (`--reward-end-of-slot-queue`), con γ 0.99, 0.9 o 0.5 y con el canal propio en el estado (`--observe-own-channel`)? | Pendiente |
+| `aprendizaje` | ¿El agente no encuentra la regla de umbral por la red chica (`--hidden-sizes 500 250 120`), por dejar de explorar (`--epsilon-end 0.1`) o por γ = 0.99 (`--gamma 0.9`)? | No le gana a Greedy ninguna. γ = 0.9 casi quita la caída (−8 % contra −34 %) y termina en ~4700; la red y el ε del paper apenas ayudan |
+| `cola` | ¿Aprende a transmitir cuando la cola se llena si el silencio se cobra en el slot que la desborda (`--reward-end-of-slot-queue`), con γ 0.99, 0.9 o 0.5 y con el canal propio en el estado (`--observe-own-channel`)? | No: sola no cambia nada (−33 %); con γ = 0.9 queda como γ = 0.9 sin ella (~4850, la mejor, pero ~800 por debajo de Greedy); γ = 0.5 queda peor |
+| `recompensa` | ¿Aprende la regla de umbral si cada agente recibe su propia recompensa (`--local-reward`), sola, con γ = 0.9, y con γ = 0.9 más la cola al final del slot o el canal propio en el estado? | Pendiente |
+| `gamma` | ¿Hay un γ mejor cerca de 0.9 (0.95, 0.85, 0.8, 0.7)? | Pendiente |
 
-Los dos últimos conjuntos van en trabajos aparte y caben a la vez (la QoS deja 2 GPUs):
-`make run-diag DIAG_SET=aprendizaje` y `make run-diag DIAG_SET=cola`. El notebook los muestra
-juntos, con Greedy, DTE y la regla de umbral como referencias (`make run-umbral` la corre para todo
-K en CPU).
+Cada conjunto es un trabajo aparte. La QoS deja 2 GPUs a la vez: un tercer trabajo espera en la
+cola hasta que se libere una. El notebook muestra `aprendizaje`, `cola`, `recompensa` y `gamma` juntos, con
+Greedy, DTE y la regla de umbral como referencias (`make run-umbral` la corre para todo K en CPU).
 
 Para traer los resultados a la máquina local, desde la raíz: `make pull-runs`. Después,
 `notebooks/greedy.ipynb`, `fedavg.ipynb`, `dte.ipynb` y `gossip.ipynb` analizan el barrido de K
@@ -241,6 +243,16 @@ deja el slot en vez de Q_k^t, la de su inicio. En la Ec. 22 la acción de un slo
 término de cola: el slot de silencio que llena la cola lo paga el siguiente. Con la opción lo paga
 el mismo slot. Las observaciones, las métricas (el retardo sigue saliendo de Q_k^t) y la dinámica no
 cambian.
+
+**Recompensa local (opcional, apagada por defecto).** En la Ec. 22 la recompensa es una sola para
+todos: los K agentes reciben el mismo número en cada slot, y ninguno distingue lo que causó él de lo
+que hicieron los demás. El entorno reporta además, en el `info` de cada paso, una recompensa por par
+(`local_reward`, `reward.compute_local_rewards`): los mismos tres términos, pero solo los que toca
+la acción del par, es decir el CUE del canal que eligió (todos los pares de un canal se juzgan por el
+mismo CUE), su propia cola y su propia confiabilidad. No cuenta la interferencia que el par causa a
+los otros pares V2V de su canal. Con `--local-reward` cada agente aprende de ella; el CSV sigue
+guardando la recompensa compartida, así que las corridas se comparan igual. Sigue la misma regla de
+tiempo de la cola que la compartida (`--reward-end-of-slot-queue` la cambia en las dos).
 
 **Regla de umbral (`agents/threshold_policy.py`, no está en el paper).** Una referencia sin
 entrenar, solo con información local: el canal como Greedy, potencia máxima si el enlace propio es

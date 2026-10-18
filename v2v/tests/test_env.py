@@ -380,4 +380,49 @@ def test_end_of_slot_queue_reward_changes_nothing_but_the_reward():
         obs_end, _, _, _, infos_end = end.step(actions)
         for agent in obs_paper:
             assert np.array_equal(obs_paper[agent], obs_end[agent])
-        assert infos_paper == infos_end
+        # The local reward is a reward too: it follows the same queue timing.
+        drop_local = lambda infos: {a: {k: v for k, v in i.items() if k != "local_reward"} for a, i in infos.items()}
+        assert drop_local(infos_paper) == drop_local(infos_end)
+
+
+def test_step_info_reports_a_finite_local_reward_per_pair_next_to_the_shared_reward():
+    env = make_env()
+    env.reset(seed=0)
+    _, rewards, _, _, infos = env.step({"v2v_0": 2, "v2v_1": 5, "v2v_2": 6})
+    local = [infos[a]["local_reward"] for a in env.possible_agents]
+    assert all(math.isfinite(r) for r in local)
+    assert len(set(local)) > 1  # unlike the shared reward, it differs between pairs
+    assert len(set(rewards.values())) == 1
+
+
+def test_local_reward_ignores_what_pairs_on_other_channels_do():
+    # Pairs 0 and 1 transmit at P_max alone on channels 0 and 1; pair 2 sits on channel 2, silent in
+    # one env and at P_max in the other. The fading draws do not depend on the actions, so only
+    # pair 2's choice differs: it moves the shared reward, never the local reward of pairs 0 and 1.
+    levels = 3
+    silent, loud = make_env(), make_env()
+    silent.reset(seed=4)
+    loud.reset(seed=4)
+    actions = {"v2v_0": 0 * levels + 2, "v2v_1": 1 * levels + 2}
+    _, rewards_silent, _, _, infos_silent = silent.step({**actions, "v2v_2": 2 * levels + 0})
+    _, rewards_loud, _, _, infos_loud = loud.step({**actions, "v2v_2": 2 * levels + 2})
+    assert rewards_silent["v2v_0"] != rewards_loud["v2v_0"]
+    for agent in ("v2v_0", "v2v_1"):
+        assert infos_silent[agent]["local_reward"] == infos_loud[agent]["local_reward"]
+    assert infos_silent["v2v_2"]["local_reward"] != infos_loud["v2v_2"]["local_reward"]
+
+
+def test_local_reward_follows_the_end_of_slot_queue_option():
+    # Same setting as the shared-reward test above: one slot of arrivals fills Q_max, so at zero
+    # power each pair's queue utility goes from U(1) = 1 to U(0) = A.
+    kwargs = dict(max_tolerable_delay_s=1e-3)
+    paper, end = make_env(**kwargs), make_env(reward_end_of_slot_queue=True, **kwargs)
+    paper.reset(seed=0)
+    end.reset(seed=0)
+    zero_power = {agent: 0 for agent in paper.agents}
+    _, _, _, _, infos_paper = paper.step(zero_power)
+    _, _, _, _, infos_end = end.step(zero_power)
+    lambda2, penalty = paper.params.reward_weights[1], paper.params.penalty_constant
+    for agent in paper.possible_agents:
+        difference = infos_paper[agent]["local_reward"] - infos_end[agent]["local_reward"]
+        assert np.isclose(difference, lambda2 * (1.0 - penalty))

@@ -81,9 +81,9 @@ run-gossip:
 # linea: nombre y opciones de main.py) con un K y una semilla, a la vez en una GPU (jobs/diag.sbatch).
 # Salida en v2v/runs/diag/<variante>/k<K>/, fuera del barrido; las variantes que ya tienen CSV no se
 # vuelven a correr. Se analiza con notebooks/diagnostico.ipynb. Ejemplo:
-#   make run-diag DIAG_SET=gamma
+#   make run-diag DIAG_SET=cola
 # El limite de tiempo deja margen: 4 variantes juntas tardaron ~5.5 h con K = 10 y 2000 episodios.
-DIAG_SET := gamma
+DIAG_SET := aprendizaje
 DIAG_K := 10
 DIAG_EPISODES := 2000
 DIAG_SEED := 0

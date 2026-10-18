@@ -1,0 +1,15 @@
+# Cuarto diagnostico (oct. 2026), plan B: con la recompensa compartida de la Ec. 22 los K agentes
+# reciben el mismo numero en cada slot, y ninguno distingue lo que causo el de lo que hicieron los
+# demas. Con --local-reward cada agente aprende de su parte: su cola, su confiabilidad y el CUE del
+# canal que eligio. El CSV sigue guardando la recompensa compartida, asi que se compara igual.
+# Pregunta: con su propia recompensa, el agente aprende la regla de umbral (callarse si su enlace es
+# debil, transmitir cuando su cola se llena) y deja de caerse?
+# En aprendizaje y cola, gamma 0.9 fue lo que mas ayudo y la cola al final del slot casi no cambio
+# nada, asi que casi todas van con gamma 0.9. Los agentes que aprenden se amontonan en pocos canales
+# (3 en uso contra 7 de Greedy): el canal propio en el estado es para eso.
+# base (la configuracion de siempre) ya corrio en el conjunto caida: no se vuelve a correr.
+base
+local --local-reward
+local-gamma0.9 --local-reward --gamma 0.9
+local-gamma0.9-cola-fin --local-reward --gamma 0.9 --reward-end-of-slot-queue
+local-gamma0.9-canal --local-reward --gamma 0.9 --observe-own-channel

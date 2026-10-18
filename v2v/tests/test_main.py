@@ -6,12 +6,14 @@ import pytest
 import torch
 
 from agents.federated import fedavg_node_loads, model_num_bytes
+from v2v_env.env import V2VEnv
 from v2v_env.params import V2VEnvParams
 
 import main
 from main import (
     EpisodeAccumulator,
     EpisodeRecord,
+    episode_seed,
     epsilon_schedule,
     make_agents,
     print_convergence_verdict,
@@ -492,3 +494,36 @@ def test_cli_defaults_for_network_exploration_floor_and_queue_reward_are_recorde
     assert meta["hidden_sizes"] == [128, 128]
     assert meta["epsilon_end"] == 0.05
     assert meta["reward_end_of_slot_queue"] is False
+
+
+def test_local_reward_trains_each_agent_on_its_own_reward_but_logs_the_shared_one():
+    # 10 slots never fill a 128-sample minibatch, so nobody learns and both runs act the same.
+    params = make_tiny_params()
+    plain_records, _ = run_training(params, episodes=2, seed=0, fedavg_every=2, log_every=100)
+    local_records, local_agents = run_training(
+        params, episodes=2, seed=0, fedavg_every=2, log_every=100, local_reward=True
+    )
+    assert [r.reward for r in local_records] == [r.reward for r in plain_records]
+    # Replay the stored actions to get the local reward the env reported for each of them.
+    env = V2VEnv(params)
+    expected = {agent_id: [] for agent_id in local_agents}
+    for ep in range(2):
+        env.reset(seed=episode_seed(0, ep))
+        for slot in range(params.max_steps):
+            step = ep * params.max_steps + slot
+            actions = {a: int(agent.buffer.actions[step]) for a, agent in local_agents.items()}
+            _, _, _, _, infos = env.step(actions)
+            for a in local_agents:
+                expected[a].append(infos[a]["local_reward"])
+    for agent_id, agent in local_agents.items():
+        assert agent.buffer.rewards[: len(agent.buffer)] == pytest.approx(expected[agent_id])
+
+
+def test_cli_local_reward_is_recorded_and_off_by_default(tmp_path, monkeypatch):
+    base_argv = ["main.py", "--episodes", "1", "--num-v2v-pairs", "2", "--device", "cpu", "--log-every", "1"]
+    for extra, expected in ((["--local-reward"], True), ([], False)):
+        output = tmp_path / f"local{expected}" / "fedavg_seed0.csv"
+        monkeypatch.setattr("sys.argv", [*base_argv, *extra, "--output", str(output)])
+        main.main()
+        meta = json.loads(output.with_suffix(".json").read_text())
+        assert meta["local_reward"] is expected

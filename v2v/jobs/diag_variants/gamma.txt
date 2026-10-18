@@ -1,0 +1,10 @@
+# Quinto diagnostico (oct. 2026): en aprendizaje y cola, gamma 0.9 fue lo unico que casi elimino la
+# caida (-8 % contra -34 % de base, con o sin la cola al final del slot) y gamma 0.5 quedo peor. El
+# paper no da gamma (D3QNAgent usa 0.99). Pregunta: hay un gamma mejor cerca de 0.9?
+# base y gamma0.9 ya corrieron (conjuntos caida y aprendizaje): no se vuelven a correr.
+base
+gamma0.9 --gamma 0.9
+gamma0.95 --gamma 0.95
+gamma0.85 --gamma 0.85
+gamma0.8 --gamma 0.8
+gamma0.7 --gamma 0.7

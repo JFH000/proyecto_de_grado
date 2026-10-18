@@ -7,7 +7,8 @@ coefficients are observed in normalized dB (encode_channel_gain) and the queue a
 fraction of Q_max, so the network's inputs stay near order 1. The
 reward is a single value computed centrally at each step from the joint action and
 broadcast identically to every agent (Eq. 22); see reward.py for the one deliberate
-deviation from the literal printed formula (the queue term's sign).
+deviation from the literal printed formula (the queue term's sign). Each step's info also
+carries a per-pair local reward (not in the paper; reward.compute_local_rewards).
 """
 
 import functools
@@ -18,7 +19,7 @@ from pettingzoo import ParallelEnv
 
 from v2v_env import channel, physics
 from v2v_env.params import V2VEnvParams
-from v2v_env.reward import compute_reward
+from v2v_env.reward import compute_local_rewards, compute_reward
 
 MIN_CHANNEL_GAIN = 1e-20  # -200 dB floor, so a zero fading draw still has a finite log
 
@@ -192,7 +193,7 @@ class V2VEnv(ParallelEnv):
                 for i in range(k)
             ]
         )
-        shared_reward = compute_reward(
+        reward_inputs = dict(
             cue_rates=cue_rates,
             cue_min_rate_bps=self.params.cue_min_rate_bps,
             v2v_queues=next_queue if self.params.reward_end_of_slot_queue else self._queue,
@@ -204,6 +205,8 @@ class V2VEnv(ParallelEnv):
             weights=self.params.reward_weights,
             penalty=self.params.penalty_constant,
         )
+        shared_reward = compute_reward(**reward_inputs)
+        local_rewards = compute_local_rewards(channels=channels, **reward_inputs)
 
         # QoS metrics for logging, taken from the quantities the paper's reward judges: delay via
         # Little's law on Q_k^t, the queue at the start of the slot (so delay > D_max <=> Q_k^t > Q_max),
@@ -240,6 +243,7 @@ class V2VEnv(ParallelEnv):
                 "co_channel": bool(co_channel[i]),
                 "channels_used": channels_used,
                 "neighbors": int(neighbor_counts[i]),
+                "local_reward": float(local_rewards[i]),
             }
             for i, agent in enumerate(self.possible_agents)
         }

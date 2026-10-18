@@ -17,6 +17,10 @@ three terms are dimensionless and comparable with the penalty A. In raw units (b
 bits, linear SINR) the CUE-rate term is ~3e7 per slot, the queue term ~2.5e5 and the
 reliability term ~1e2, so the reward tracks only the CUE rate and A = -10 has no effect
 on any of the three constraints.
+
+Not in the paper: compute_local_rewards splits the same terms per V2V pair, judging each pair
+on its own queue, its own reliability and the CUE of the channel it picked. The env reports it
+next to the shared reward; main.py --local-reward trains on it and still logs the shared one.
 """
 
 import numpy as np
@@ -45,3 +49,27 @@ def compute_reward(
     reliability_term = sum(utility(m / reliability_threshold, penalty) for m in reliability_margins)
 
     return lambda1 * cue_term + lambda2 * queue_term + lambda3 * reliability_term
+
+
+def compute_local_rewards(
+    cue_rates: np.ndarray,
+    channels: np.ndarray,
+    cue_min_rate_bps: float,
+    v2v_queues: np.ndarray,
+    max_queue_length_bits: float,
+    reliability_margins: np.ndarray,
+    reliability_threshold: float,
+    weights: tuple[float, float, float],
+    penalty: float,
+) -> np.ndarray:
+    """Per-pair reward (not in the paper): the three terms of compute_reward restricted to what
+    each pair's action touches -- the CUE of the channel it picked (every pair on that channel is
+    judged on the same CUE), its own queue and its own reliability. It ignores the interference a
+    pair causes to the other V2V pairs on its channel."""
+    lambda1, lambda2, lambda3 = weights
+    cue_utility = np.array([utility((r - cue_min_rate_bps) / cue_min_rate_bps, penalty) for r in cue_rates])
+    queue_utility = np.array(
+        [utility((max_queue_length_bits - q) / max_queue_length_bits, penalty) for q in v2v_queues]
+    )
+    reliability_utility = np.array([utility(m / reliability_threshold, penalty) for m in reliability_margins])
+    return lambda1 * cue_utility[channels] + lambda2 * queue_utility + lambda3 * reliability_utility

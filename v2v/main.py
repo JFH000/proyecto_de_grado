@@ -11,6 +11,8 @@ without the BS (agents/gossip.py); `--gossip-neighbors S` pulls at most S random
 ones per round.
 `--aggregation none`: the agents never share weights -- pure DTE, the control
 that shows what federation adds.
+`--local-reward` (not in the paper): each agent learns from its own share of the
+reward (the env's per-pair local reward) instead of the shared Eq. 22 reward.
 
 Writes one CSV row per episode and agent: the summed reward, the per-slot QoS and
 behaviour metrics V2VEnv.step reports averaged over the episode, and the training-side
@@ -187,10 +189,13 @@ def run_training(
     gossip_neighbors: int | None = None,
     reward_scale: float = 1.0,
     epsilon_end: float = 0.05,
+    local_reward: bool = False,
 ) -> tuple[list[EpisodeRecord], dict[str, D3QNAgent]]:
     """reward_scale multiplies the reward the agents store and learn from; the CSV keeps the
     environment's reward, so runs with different scales stay comparable. epsilon_end is the
-    exploration floor, reached at 60 % of the training (epsilon_schedule)."""
+    exploration floor, reached at 60 % of the training (epsilon_schedule). local_reward makes
+    each agent learn from its own local reward (env info "local_reward"); the CSV still logs the
+    shared reward, so runs with and without it stay comparable."""
     if aggregation not in AGGREGATIONS:
         raise ValueError(f"aggregation must be one of {AGGREGATIONS}, got {aggregation!r}")
     env = V2VEnv(params)
@@ -217,7 +222,8 @@ def run_training(
             actions = {a: agents[a].select_action(obs[a], eps) for a in env.agents}
             next_obs, rewards, _, _, infos = env.step(actions)
             for a in env.possible_agents:
-                agents[a].store_transition(obs[a], actions[a], rewards[a] * reward_scale, next_obs[a])
+                learned = infos[a]["local_reward"] if local_reward else rewards[a]
+                agents[a].store_transition(obs[a], actions[a], learned * reward_scale, next_obs[a])
                 loss = agents[a].learn()
                 if loss is not None:
                     sample_counts[a] += agents[a].batch_size
@@ -343,6 +349,11 @@ def main() -> None:
         help="Add to each agent's state a one-hot of the channel it picked in the last slot "
         "(V2VEnvParams.observe_own_channel; not part of the paper's state)",
     )
+    parser.add_argument(
+        "--local-reward", action="store_true",
+        help="Each agent learns from its own local reward (its queue, its reliability and the CUE of its "
+        "channel) instead of the shared one; the CSV still logs the shared reward (not in the paper)",
+    )
     parser.add_argument("--log-every", type=int, default=10)
     parser.add_argument("--output", type=Path, default=Path("runs/rewards.csv"))
     parser.add_argument(
@@ -385,6 +396,7 @@ def main() -> None:
         agent_kwargs=agent_kwargs,
         reward_scale=args.reward_scale,
         epsilon_end=args.epsilon_end,
+        local_reward=args.local_reward,
     )
     wall_time_s = time.perf_counter() - start
     first_agent = next(iter(agents.values()))
@@ -407,6 +419,7 @@ def main() -> None:
             reward_end_of_slot_queue=params.reward_end_of_slot_queue,
             hidden_sizes=list(first_agent.online.hidden_sizes),
             epsilon_end=args.epsilon_end,
+            local_reward=args.local_reward,
             reward_scale=args.reward_scale,
             model_bytes=model_num_bytes(first_agent.online),
         ),

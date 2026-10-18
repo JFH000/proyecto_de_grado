@@ -1,6 +1,6 @@
 import numpy as np
 
-from v2v_env.reward import utility, compute_reward
+from v2v_env.reward import utility, compute_local_rewards, compute_reward
 
 
 def test_utility_returns_x_when_positive():
@@ -138,3 +138,40 @@ def test_reward_terms_are_relative_to_their_thresholds():
         penalty=-10.0,
     )
     assert np.isclose(r, 0.3 * 2.0 + 0.5 * 0.75 + 0.2 * 0.5)
+
+
+def test_local_rewards_give_each_pair_its_channels_cue_its_own_queue_and_its_own_reliability():
+    # CUE utilities [1, 2]; pairs on channels [1, 0, 1]; queue utilities [1, 0.5, A]; reliability
+    # utilities [0.5, A, 2]. Pairs 0 and 2 share channel 1, so both are judged on CUE 1.
+    rewards = compute_local_rewards(
+        cue_rates=np.array([2.0e6, 3.0e6]),
+        channels=np.array([1, 0, 1]),
+        cue_min_rate_bps=1.0e6,
+        v2v_queues=np.array([0.0, 500.0, 2000.0]),
+        max_queue_length_bits=1000.0,
+        reliability_margins=np.array([0.5, -1.0, 2.0]),
+        reliability_threshold=1.0,
+        weights=(0.3, 0.5, 0.2),
+        penalty=-10.0,
+    )
+    expected = [
+        0.3 * 2.0 + 0.5 * 1.0 + 0.2 * 0.5,
+        0.3 * 1.0 + 0.5 * 0.5 + 0.2 * -10.0,
+        0.3 * 2.0 + 0.5 * -10.0 + 0.2 * 2.0,
+    ]
+    assert np.allclose(rewards, expected)
+
+
+def test_local_rewards_charge_a_cue_below_its_minimum_only_to_the_pairs_on_its_channel():
+    rewards = compute_local_rewards(
+        cue_rates=np.array([0.5e6, 2.0e6]),
+        channels=np.array([0, 1]),
+        cue_min_rate_bps=1.0e6,
+        v2v_queues=np.array([0.0, 0.0]),
+        max_queue_length_bits=1.0,
+        reliability_margins=np.array([1.0, 1.0]),
+        reliability_threshold=1.0,
+        weights=(1.0, 0.0, 0.0),
+        penalty=-10.0,
+    )
+    assert np.allclose(rewards, [-10.0, 1.0])
