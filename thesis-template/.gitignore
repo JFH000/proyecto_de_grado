@@ -9,6 +9,7 @@
 /main.toc
 /main.ilg
 /main.lof
+/main.lot
 *.gz
 *.synctex(busy)
 *.out

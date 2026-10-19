@@ -1,0 +1,32 @@
+% !TEX root = ./../main.tex
+
+\chapter{Dynamic Decentralized Aggregation}
+\label{chap:decentralized-aggregation}
+
+
+%%
+\section{D3QN Agent}
+\label{sec:d3qn-agent}
+% Red Q de cada par, replay priorizado y calendario de epsilon (v2v/agents/d3qn_agent.py). Senalar
+% donde la implementacion se aparta de la Tabla III del paper (capas ocultas, piso de epsilon).
+
+%%
+\section{Centralized Baseline: Federated Averaging}
+\label{sec:fedavg}
+% Cada 50 slots la BS promedia las redes online de los K agentes y devuelve el promedio
+% (v2v/agents/federated.py). Son 2K transferencias por ronda, todas por la BS.
+
+%%
+\section{Neighbor-Based Gossip Aggregation}
+\label{sec:gossip}
+% Cada 50 slots cada agente promedia su red con la de los pares a 300 m o menos, sin la BS
+% (v2v/agents/gossip.py), con la variante de a lo sumo S vecinos al azar (--gossip-neighbors).
+% Explicar que tiene de dinamica: el grafo de vecinos cambia con las posiciones de cada episodio.
+
+%%
+\section{Communication Cost}
+\label{sec:communication-cost}
+% Transferencias por ronda y carga del nodo mas cargado en cada esquema (comm_models y
+% comm_max_load en el CSV). Un modelo pesa 121 588 bytes con K y M por defecto.
+
+\endinput

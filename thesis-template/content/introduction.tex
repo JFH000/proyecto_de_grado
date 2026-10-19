@@ -5,32 +5,152 @@
 
 
 %%
-\section{A first section}
-\label{sec:sec1}
+\section{Motivation}
+\label{sec:motivation}
 
-\lipsum
+Vehicles increasingly exchange information with each other to support services such as collision
+warnings and cooperative traffic management. Links between nearby vehicles, known as \ac{V2V} links,
+carry this traffic directly. They need only moderate throughput, but they must deliver packets with low
+delay and high reliability \cite{li+22fedmarl}. In cellular vehicular networks, a common
+way to provide these links without dedicated spectrum is to let \ac{V2V} pairs reuse the channels already
+assigned to \acp{CUE}. Reuse makes better use of a scarce resource, but it creates mutual interference: a
+\ac{V2V} transmitter that picks a crowded channel, or transmits with too much power, lowers the rate of the
+cellular user on that channel and can make its own packets, or those of other pairs, fail
+\cite{li+22fedmarl}.
 
-\url{https://github.com/FLAGlab/thesis-template}
+Deciding which channel each pair reuses and how much power it uses is hard for two reasons. First,
+vehicles move fast, so channel conditions and the network topology change quickly. Tracking the
+instantaneous channel state of every link at a central controller is impractical and costs substantial
+signaling \cite{li+22fedmarl}. Second, decisions made now affect performance later. A pair that stays
+silent causes no interference, but packets keep arriving and its queue grows until it has to transmit
+anyway. Resource allocation in this setting is therefore a sequential decision problem
+rather than a one-shot optimization, which makes it a natural fit for \ac{RL} \cite{li+22fedmarl}.
 
-\ac{RL}
+In this setting, each \ac{V2V} pair can be treated as an agent that chooses its channel and power from what
+it can observe locally. This turns the problem into one of \ac{MARL}, which inherits the
+well-known difficulties of that setting \cite{gronauer+22marlsurvey,nguyen+20madrl}. Each agent sees only
+part of the network. Because all agents learn at the same time, the environment looks non-stationary from
+the point of view of any single one of them. And the joint state and action spaces grow exponentially with
+the number of agents, so a method that works for a handful of pairs may not work on a dense road.
 
-%%%%
-\subsection{A subsection}
-\label{sec:subsec}
+One way for agents to benefit from each other's experience without pooling their data is \ac{FL}. In its
+standard form, \ac{FedAvg}, each client trains a copy of a shared model on its own data, and a central
+server periodically averages the clients' parameters into a global model that it sends back to them
+\cite{mcmahan+17fedavg}. \citet{li+22fedmarl} applied this idea to \ac{V2V} resource allocation. In their
+scheme, every pair runs a \ac{D3QN} agent on its local observations, and the \ac{BS} periodically averages
+the agents' networks with \ac{FedAvg} and broadcasts the result. Sharing the averaged model gives each
+agent implicit knowledge of the parts of the network it cannot observe, and it avoids the communication
+overhead and privacy concerns of collecting every vehicle's data for centralized training. In their
+simulations, the scheme outperformed its baselines in both the cellular sum rate and the \ac{V2V} packet
+delivery rate \cite{li+22fedmarl}.
 
-\begin{figure}[hptb]
-  \centering
-  \includegraphics[width=0.75\columnwidth]{figures/Flag-logo}
-  \caption{All figures must have captions and be referenced from the text}
-  \label{fig:flag-logo}
-\end{figure}
+This design, however, puts the \ac{BS} at the center of training. The agents make their decisions on their own,
+precisely to avoid the extra delay of going through the cellular infrastructure, but they cannot learn
+without it. In every round, the \ac{BS} collects all local models, averages them, and sends the result
+back. It also evaluates the global reward that every agent learns from and broadcasts it at the end of
+each slot \cite{li+22fedmarl}. A central server of this kind is a single point of failure, concentrates
+the communication load on one node, and is vulnerable to attacks \cite{ge+24dfl}. In a vehicular
+network, these costs are concrete: all model traffic goes through the cellular uplink and downlink, and a
+vehicle that loses contact with the \ac{BS} also drops out of training.
 
-\begin{table}[hptb]
-  \centering
-  \caption{Table captions are always above the table}
-  \input{tables/template}
-  \label{tab:template}
-\end{table}
+In \ac{DFL}, the server is removed altogether. Devices connect to each other directly, and each one combines the
+knowledge of a few neighbors, so that what one device learns spreads through the network without a
+coordinator \cite{ge+24dfl}. In the \ac{MARL} literature, the analogous setting, in which agents cooperate
+through peer-to-peer (gossip) communication instead of a central node, is studied as decentralized
+\ac{MARL} \cite{cheruiyot+25marlsurvey}. The vehicular setting seems well suited to this approach. In the
+scheme of \citet{li+22fedmarl}, each pair already relies on information about the pairs within its
+maximum communication radius of 300~m, which it obtains by radio sensing or over the sidelink. Those same
+neighbors could exchange model parameters directly, and as the positions of the vehicles change, so do
+the neighborhoods through which knowledge travels.
+
+
+%%
+\section{Problem Statement}
+\label{sec:problem-statement}
+
+The scheme of \citet{li+22fedmarl} makes resource allocation decentralized at execution time but keeps
+training centralized at the \ac{BS}. This thesis asks whether that central aggregator is necessary.
+Specifically, we study the following question:
+
+\begin{quote}
+  \itshape Can the \ac{BS} be removed from model aggregation in federated \ac{MARL} for \ac{V2V} resource
+  allocation, by letting each vehicle average its model with those of nearby vehicles, without losing
+  performance, and at what communication cost?
+\end{quote}
+
+By performance we mean the quantities the original scheme optimizes: the rate of the \acp{CUE} and the
+delay and reliability of the \ac{V2V} links, all of which enter the reward. By communication cost we mean
+how many model transfers each scheme needs and how those transfers are distributed among the nodes. A
+scheme in which every transfer goes through a single node is harder to scale than one that spreads the
+load.
+
+% Si --local-reward queda como opcion por defecto, este parrafo cambia.
+We limit the scope of this thesis to model aggregation. The \ac{BS} of \citet{li+22fedmarl} also computes
+the global reward shared by all agents. We keep that reward unchanged, so that any difference we observe
+comes from the aggregation scheme and not from a different learning objective, and leave the
+decentralization of the reward for future work.
+
+
+%%
+\section{Objectives}
+\label{sec:objectives}
+
+The general objective of this thesis is to design and evaluate a decentralized aggregation scheme for
+federated \ac{MARL} that removes the \ac{BS} from model aggregation in \ac{V2V} resource allocation. The
+specific objectives are the following:
+
+\begin{enumerate}
+  \item Reimplement the scheme of \citet{li+22fedmarl} as a centralized baseline, together with the
+    reference methods needed to interpret its results: agents that learn without ever sharing their
+    models, and heuristics that do not learn at all.
+  \item Design an aggregation scheme in which each agent periodically averages its model with those of
+    the \ac{V2V} pairs within its communication range, without involving the \ac{BS}.
+  \item Evaluate both schemes as the number of \ac{V2V} pairs grows from 5 to 30, in terms of reward,
+    \ac{CUE} rate, \ac{V2V} delay and outage, convergence speed, and communication cost.
+\end{enumerate}
+
+
+%%
+\section{Contributions}
+\label{sec:contributions}
+
+This thesis makes the following contributions:
+
+\begin{enumerate}
+  \item A reimplementation of the scheme of \citet{li+22fedmarl} as a multi-agent simulation environment
+    with \ac{D3QN} agents and \ac{FedAvg} aggregation. The implementation also includes independent
+    learners that never share their models, which correspond to \ac{DTE} \cite{amato24cooperative}, and
+    two heuristics that do not learn. Each equation of the system model is checked against the code.
+  % Actualizar cuando terminen los sets de diagnostico recompensa y gamma.
+  \item An analysis of a failure found during the replication. In our implementation, the learning agents
+    lose part of what they learned as exploration decays, and for up to 20 pairs they end below a simple
+    greedy heuristic. Our diagnosis points to the timing of the reward: staying silent is rewarded immediately,
+    while its cost, a queue that eventually overflows, shows up much later. A fixed rule that uses only
+    local information, transmitting at full power when the pair's own link is strong and otherwise
+    waiting until its queue is nearly full, outperforms the greedy heuristic for every number of pairs
+    we tested.
+  % resultado principal cuando terminen los jobs de gossip.
+  \item A neighbor-based aggregation scheme for federated \ac{MARL}, in which vehicles average their
+    models with the pairs in their communication range, and its comparison with centralized \ac{FedAvg}
+    and with independent learners in terms of reward and communication cost.
+\end{enumerate}
+
+
+%%
+\section{Document Structure}
+\label{sec:document-structure}
+
+The rest of this document is organized as follows. \fref{chap:background} introduces the concepts the
+thesis builds on: \ac{RL} and the \ac{D3QN} agent, \ac{MARL}, \ac{FL}, and \ac{V2V} communications.
+\fref{chap:related-work} reviews work on learning-based resource allocation for vehicular networks,
+federated and decentralized \ac{MARL}, and the scalability of multi-agent learning, and positions this
+thesis among them. \fref{chap:system-model} describes the network scenario, the channel model, and the
+formulation of the problem as a multi-agent decision process. \fref{chap:decentralized-aggregation}
+presents the agents and the two aggregation schemes, centralized \ac{FedAvg} and neighbor-based gossip,
+and analyzes their communication cost. \fref{chap:experimental-setup} describes the simulation
+parameters, baselines, metrics, and training protocol. \fref{chap:results} reports the replication of the
+baseline, its behavior as the number of agents grows, the diagnosis of the learners' collapse, and the
+comparison between decentralized and centralized aggregation. Finally, \fref{chap:conclusions}
+summarizes the findings, discusses the limitations of this work, and outlines future work.
 
 \endinput
-
