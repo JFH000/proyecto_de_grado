@@ -46,14 +46,18 @@ LEARNER_MINUTES_PER_K := 150
 # Donde corren FedAvg, DTE, gossip y el diagnostico: gpu (por defecto) o cpu, la particion short.
 # La red es tan pequena que la GPU casi no acelera: en run-cpu-test (oct. 2026) una corrida sola con
 # 2 CPUs tardo 4.2 s por episodio con K = 10 y 13.7 s con K = 30, contra ~8 y ~25 s con 3 corridas
-# compartiendo una GPU. Y short deja 120 CPUs por usuario (un barrido entero a la vez) contra 2 GPUs.
+# compartiendo una GPU. Y short deja 128 CPUs por usuario (un barrido entero a la vez) contra 2 GPUs.
 # Ejemplo: make run-fedavg RUN_ON=cpu
 RUN_ON := gpu
 # Limite en CPU: K x CPU_MINUTES_PER_K minutos. A 13.7 s por episodio con K = 30, 4000 episodios son
 # ~15 h (~31 min por par); 60 deja el doble de margen (K = 30 -> 30 h; short permite hasta 5 dias).
 CPU_MINUTES_PER_K := 60
+# Memoria en CPU por semilla. short no da mas de 4 GB por CPU: con los 32 GB de jobs/seeds.sbatch,
+# pensados para la GPU, Slurm subiria los CPUs del trabajo para cubrirlos. Una corrida en CPU usa
+# menos de 1 GB (run-cpu-test, K = 30).
+CPU_MEM_GB_PER_SEED := 4
 ifeq ($(RUN_ON),cpu)
-LEARNER_SBATCH = -p short --time=$$((k * $(CPU_MINUTES_PER_K)))
+LEARNER_SBATCH = -p short --mem=$$((n * $(CPU_MEM_GB_PER_SEED)))G --time=$$((k * $(CPU_MINUTES_PER_K)))
 DIAG_SBATCH = -p short
 else ifeq ($(RUN_ON),gpu)
 LEARNER_SBATCH = -p gpu --gres=gpu:1 --time=$$((k * $(LEARNER_MINUTES_PER_K)))
