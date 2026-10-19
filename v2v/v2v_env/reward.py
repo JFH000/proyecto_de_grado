@@ -19,8 +19,8 @@ reliability term ~1e2, so the reward tracks only the CUE rate and A = -10 has no
 on any of the three constraints.
 
 Not in the paper: compute_local_rewards splits the same terms per V2V pair, judging each pair
-on its own queue, its own reliability and the CUE of the channel it picked. The env reports it
-next to the shared reward; main.py --local-reward trains on it and still logs the shared one.
+on its own queue, its own reliability and the CUE of the channel it picked. With
+V2VEnvParams.local_reward the agents learn from it; the env still returns the shared reward.
 """
 
 import numpy as np

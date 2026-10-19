@@ -8,7 +8,8 @@ fraction of Q_max, so the network's inputs stay near order 1. The
 reward is a single value computed centrally at each step from the joint action and
 broadcast identically to every agent (Eq. 22); see reward.py for the one deliberate
 deviation from the literal printed formula (the queue term's sign). Each step's info also
-carries a per-pair local reward (not in the paper; reward.compute_local_rewards).
+carries the reward the agents learn from ("learning_reward"): the same shared reward unless the
+params ask for the end-of-slot queue or the per-pair local reward (neither is in the paper).
 """
 
 import functools
@@ -196,7 +197,7 @@ class V2VEnv(ParallelEnv):
         reward_inputs = dict(
             cue_rates=cue_rates,
             cue_min_rate_bps=self.params.cue_min_rate_bps,
-            v2v_queues=next_queue if self.params.reward_end_of_slot_queue else self._queue,
+            v2v_queues=self._queue,
             max_queue_length_bits=self.params.max_queue_length_bits,
             reliability_margins=reliability_margins,
             reliability_threshold=physics.reliability_threshold(
@@ -205,8 +206,15 @@ class V2VEnv(ParallelEnv):
             weights=self.params.reward_weights,
             penalty=self.params.penalty_constant,
         )
-        shared_reward = compute_reward(**reward_inputs)
-        local_rewards = compute_local_rewards(channels=channels, **reward_inputs)
+        shared_reward = compute_reward(**reward_inputs)  # Eq. 22: returned, and logged by main.py
+        if self.params.reward_end_of_slot_queue:
+            reward_inputs["v2v_queues"] = next_queue
+        if self.params.local_reward:
+            learning_rewards = compute_local_rewards(channels=channels, **reward_inputs)
+        elif self.params.reward_end_of_slot_queue:
+            learning_rewards = np.full(k, compute_reward(**reward_inputs))
+        else:
+            learning_rewards = np.full(k, shared_reward)
 
         # QoS metrics for logging, taken from the quantities the paper's reward judges: delay via
         # Little's law on Q_k^t, the queue at the start of the slot (so delay > D_max <=> Q_k^t > Q_max),
@@ -243,7 +251,7 @@ class V2VEnv(ParallelEnv):
                 "co_channel": bool(co_channel[i]),
                 "channels_used": channels_used,
                 "neighbors": int(neighbor_counts[i]),
-                "local_reward": float(local_rewards[i]),
+                "learning_reward": float(learning_rewards[i]),
             }
             for i, agent in enumerate(self.possible_agents)
         }

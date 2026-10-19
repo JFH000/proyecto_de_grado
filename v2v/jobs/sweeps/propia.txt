@@ -1,0 +1,7 @@
+# Barrido principal (oct. 2026). Cada agente aprende de su propia recompensa (--local-reward: su cola,
+# su confiabilidad y el CUE del canal que eligio) con la cola cobrada en el slot que la desborda y
+# gamma 0.9: la mejor configuracion de los diagnosticos (conjuntos recompensa y gamma; README).
+# Solo cambia la recompensa de la que aprenden los agentes: el CSV guarda la de la Ec. 22, igual que
+# en el barrido paper y en Greedy, asi que todo se compara con la misma medida.
+# Una linea con las opciones de main.py para FedAvg, DTE y gossip (las lineas con # no cuentan).
+--local-reward --reward-end-of-slot-queue --gamma 0.9

@@ -353,7 +353,7 @@ def test_observations_with_own_channel_lie_in_observation_space():
         assert env.observation_space(agent).contains(agent_obs)
 
 
-def test_end_of_slot_queue_reward_charges_the_overflow_in_the_slot_that_causes_it():
+def test_end_of_slot_queue_charges_the_overflow_in_the_learning_reward_of_the_slot_that_causes_it():
     # Q_max = 1e6 bps x 1 ms = 1000 bits, exactly one slot of arrivals. At zero power the queue
     # starts the slot empty and ends it full: the paper's reward (queue at the start of the slot)
     # still sees full headroom, U(1) = 1; on the end-of-slot queue the margin is 0, U(0) = A.
@@ -365,33 +365,46 @@ def test_end_of_slot_queue_reward_charges_the_overflow_in_the_slot_that_causes_i
     _, rewards_paper, _, _, infos_paper = paper.step(zero_power)
     _, rewards_end, _, _, infos_end = end.step(zero_power)
     lambda2, penalty, k = paper.params.reward_weights[1], paper.params.penalty_constant, 3
-    assert np.isclose(rewards_paper["v2v_0"] - rewards_end["v2v_0"], k * lambda2 * (1.0 - penalty))
-    # The logged delay stays the paper's (queue at the start of the slot), so variants compare alike.
+    difference = infos_paper["v2v_0"]["learning_reward"] - infos_end["v2v_0"]["learning_reward"]
+    assert np.isclose(difference, k * lambda2 * (1.0 - penalty))
+    # The reward the env returns, and the logged delay, stay the paper's (queue at the start of the
+    # slot), so runs with and without the option compare alike.
+    assert rewards_paper == rewards_end
     assert [i["v2v_delay_ms"] for i in infos_paper.values()] == [i["v2v_delay_ms"] for i in infos_end.values()]
 
 
-def test_end_of_slot_queue_reward_changes_nothing_but_the_reward():
-    paper, end = make_env(), make_env(reward_end_of_slot_queue=True)
+def test_learning_reward_options_change_nothing_but_the_learning_reward():
+    paper = make_env()
+    others = [make_env(reward_end_of_slot_queue=True), make_env(local_reward=True)]
     obs_paper, _ = paper.reset(seed=2)
-    obs_end, _ = end.reset(seed=2)
+    for env in others:
+        env.reset(seed=2)
     actions = {"v2v_0": 2, "v2v_1": 7, "v2v_2": 0}
+    drop_learning = lambda infos: {a: {k: v for k, v in i.items() if k != "learning_reward"} for a, i in infos.items()}
     for _ in range(4):
-        obs_paper, _, _, _, infos_paper = paper.step(actions)
-        obs_end, _, _, _, infos_end = end.step(actions)
-        for agent in obs_paper:
-            assert np.array_equal(obs_paper[agent], obs_end[agent])
-        # The local reward is a reward too: it follows the same queue timing.
-        drop_local = lambda infos: {a: {k: v for k, v in i.items() if k != "local_reward"} for a, i in infos.items()}
-        assert drop_local(infos_paper) == drop_local(infos_end)
+        obs_paper, rewards_paper, _, _, infos_paper = paper.step(actions)
+        for env in others:
+            obs, rewards, _, _, infos = env.step(actions)
+            for agent in obs_paper:
+                assert np.array_equal(obs_paper[agent], obs[agent])
+            assert rewards == rewards_paper
+            assert drop_learning(infos) == drop_learning(infos_paper)
 
 
-def test_step_info_reports_a_finite_local_reward_per_pair_next_to_the_shared_reward():
+def test_learning_reward_is_the_shared_reward_by_default():
     env = make_env()
     env.reset(seed=0)
     _, rewards, _, _, infos = env.step({"v2v_0": 2, "v2v_1": 5, "v2v_2": 6})
-    local = [infos[a]["local_reward"] for a in env.possible_agents]
+    assert [infos[a]["learning_reward"] for a in env.possible_agents] == [rewards[a] for a in env.possible_agents]
+
+
+def test_local_learning_reward_is_finite_and_differs_between_pairs_while_the_returned_one_is_shared():
+    env = make_env(local_reward=True)
+    env.reset(seed=0)
+    _, rewards, _, _, infos = env.step({"v2v_0": 2, "v2v_1": 5, "v2v_2": 6})
+    local = [infos[a]["learning_reward"] for a in env.possible_agents]
     assert all(math.isfinite(r) for r in local)
-    assert len(set(local)) > 1  # unlike the shared reward, it differs between pairs
+    assert len(set(local)) > 1
     assert len(set(rewards.values())) == 1
 
 
@@ -400,7 +413,7 @@ def test_local_reward_ignores_what_pairs_on_other_channels_do():
     # one env and at P_max in the other. The fading draws do not depend on the actions, so only
     # pair 2's choice differs: it moves the shared reward, never the local reward of pairs 0 and 1.
     levels = 3
-    silent, loud = make_env(), make_env()
+    silent, loud = make_env(local_reward=True), make_env(local_reward=True)
     silent.reset(seed=4)
     loud.reset(seed=4)
     actions = {"v2v_0": 0 * levels + 2, "v2v_1": 1 * levels + 2}
@@ -408,14 +421,14 @@ def test_local_reward_ignores_what_pairs_on_other_channels_do():
     _, rewards_loud, _, _, infos_loud = loud.step({**actions, "v2v_2": 2 * levels + 2})
     assert rewards_silent["v2v_0"] != rewards_loud["v2v_0"]
     for agent in ("v2v_0", "v2v_1"):
-        assert infos_silent[agent]["local_reward"] == infos_loud[agent]["local_reward"]
-    assert infos_silent["v2v_2"]["local_reward"] != infos_loud["v2v_2"]["local_reward"]
+        assert infos_silent[agent]["learning_reward"] == infos_loud[agent]["learning_reward"]
+    assert infos_silent["v2v_2"]["learning_reward"] != infos_loud["v2v_2"]["learning_reward"]
 
 
 def test_local_reward_follows_the_end_of_slot_queue_option():
     # Same setting as the shared-reward test above: one slot of arrivals fills Q_max, so at zero
     # power each pair's queue utility goes from U(1) = 1 to U(0) = A.
-    kwargs = dict(max_tolerable_delay_s=1e-3)
+    kwargs = dict(max_tolerable_delay_s=1e-3, local_reward=True)
     paper, end = make_env(**kwargs), make_env(reward_end_of_slot_queue=True, **kwargs)
     paper.reset(seed=0)
     end.reset(seed=0)
@@ -424,5 +437,5 @@ def test_local_reward_follows_the_end_of_slot_queue_option():
     _, _, _, _, infos_end = end.step(zero_power)
     lambda2, penalty = paper.params.reward_weights[1], paper.params.penalty_constant
     for agent in paper.possible_agents:
-        difference = infos_paper[agent]["local_reward"] - infos_end[agent]["local_reward"]
+        difference = infos_paper[agent]["learning_reward"] - infos_end[agent]["learning_reward"]
         assert np.isclose(difference, lambda2 * (1.0 - penalty))

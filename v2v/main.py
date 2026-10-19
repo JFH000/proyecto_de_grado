@@ -11,8 +11,9 @@ without the BS (agents/gossip.py); `--gossip-neighbors S` pulls at most S random
 ones per round.
 `--aggregation none`: the agents never share weights -- pure DTE, the control
 that shows what federation adds.
-`--local-reward` (not in the paper): each agent learns from its own share of the
-reward (the env's per-pair local reward) instead of the shared Eq. 22 reward.
+`--local-reward` and `--reward-end-of-slot-queue` (not in the paper) change only the
+reward the agents learn from (the env's "learning_reward"); the CSV always logs the Eq. 22
+reward, so every run compares alike, Greedy included.
 
 Writes one CSV row per episode and agent: the summed reward, the per-slot QoS and
 behaviour metrics V2VEnv.step reports averaged over the episode, and the training-side
@@ -189,13 +190,11 @@ def run_training(
     gossip_neighbors: int | None = None,
     reward_scale: float = 1.0,
     epsilon_end: float = 0.05,
-    local_reward: bool = False,
 ) -> tuple[list[EpisodeRecord], dict[str, D3QNAgent]]:
-    """reward_scale multiplies the reward the agents store and learn from; the CSV keeps the
-    environment's reward, so runs with different scales stay comparable. epsilon_end is the
-    exploration floor, reached at 60 % of the training (epsilon_schedule). local_reward makes
-    each agent learn from its own local reward (env info "local_reward"); the CSV still logs the
-    shared reward, so runs with and without it stay comparable."""
+    """The agents learn from the env's learning reward (step info "learning_reward", which the
+    params set), times reward_scale; the CSV keeps the reward the env returns (Eq. 22), so runs
+    with different learning rewards or scales stay comparable. epsilon_end is the exploration
+    floor, reached at 60 % of the training (epsilon_schedule)."""
     if aggregation not in AGGREGATIONS:
         raise ValueError(f"aggregation must be one of {AGGREGATIONS}, got {aggregation!r}")
     env = V2VEnv(params)
@@ -222,8 +221,8 @@ def run_training(
             actions = {a: agents[a].select_action(obs[a], eps) for a in env.agents}
             next_obs, rewards, _, _, infos = env.step(actions)
             for a in env.possible_agents:
-                learned = infos[a]["local_reward"] if local_reward else rewards[a]
-                agents[a].store_transition(obs[a], actions[a], learned * reward_scale, next_obs[a])
+                learned = infos[a]["learning_reward"] * reward_scale
+                agents[a].store_transition(obs[a], actions[a], learned, next_obs[a])
                 loss = agents[a].learn()
                 if loss is not None:
                     sample_counts[a] += agents[a].batch_size
@@ -345,8 +344,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--reward-end-of-slot-queue", action="store_true",
-        help="Judge the reward's queue term on the queue each slot leaves, not the one it starts with "
-        "(V2VEnvParams.reward_end_of_slot_queue; not the paper's Eq. 22)",
+        help="Agents learn from a reward whose queue term judges the queue each slot leaves, not the one "
+        "it starts with (V2VEnvParams.reward_end_of_slot_queue; the CSV still logs the paper's Eq. 22)",
     )
     parser.add_argument(
         "--observe-own-channel", action="store_true",
@@ -356,7 +355,7 @@ def main() -> None:
     parser.add_argument(
         "--local-reward", action="store_true",
         help="Each agent learns from its own local reward (its queue, its reliability and the CUE of its "
-        "channel) instead of the shared one; the CSV still logs the shared reward (not in the paper)",
+        "channel) instead of the shared one (V2VEnvParams.local_reward; the CSV still logs Eq. 22)",
     )
     parser.add_argument("--log-every", type=int, default=10)
     parser.add_argument("--output", type=Path, default=Path("runs/rewards.csv"))
@@ -376,6 +375,7 @@ def main() -> None:
         max_steps=200,
         observe_own_channel=args.observe_own_channel,
         reward_end_of_slot_queue=args.reward_end_of_slot_queue,
+        local_reward=args.local_reward,
     )
     # Only the options given on the command line; the rest keep D3QNAgent's defaults.
     agent_kwargs = {
@@ -401,7 +401,6 @@ def main() -> None:
         agent_kwargs=agent_kwargs,
         reward_scale=args.reward_scale,
         epsilon_end=args.epsilon_end,
-        local_reward=args.local_reward,
     )
     wall_time_s = time.perf_counter() - start
     first_agent = next(iter(agents.values()))
@@ -425,7 +424,7 @@ def main() -> None:
             reward_end_of_slot_queue=params.reward_end_of_slot_queue,
             hidden_sizes=list(first_agent.online.hidden_sizes),
             epsilon_end=args.epsilon_end,
-            local_reward=args.local_reward,
+            local_reward=params.local_reward,
             reward_scale=args.reward_scale,
             model_bytes=model_num_bytes(first_agent.online),
         ),

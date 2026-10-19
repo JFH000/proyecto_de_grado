@@ -52,11 +52,16 @@ class V2VEnvParams:
     # channel it is using from one nobody uses, and cannot learn to stay on a channel no neighbor took.
     observe_own_channel: bool = False
 
-    # --- Deviation from the paper's reward timing (off by default) ---
+    # --- What the agents learn from (off by default: the paper's Eq. 22) ---
+    # Both options change only the reward the agents learn from (the step info's "learning_reward").
+    # The reward the env returns, which main.py logs, stays Eq. 22, so every run compares alike.
     # Eq. 22 judges Q_k^t, the queue at the start of the slot, which this slot's action cannot
     # change: the cost of staying silent shows up one slot later. With this on, the queue term
     # judges the queue the slot leaves, so the slot whose silence overflows the queue pays for it.
     reward_end_of_slot_queue: bool = False
+    # Not in the paper: each pair learns from its own local reward (reward.compute_local_rewards)
+    # instead of the reward shared by all K agents.
+    local_reward: bool = False
 
     max_queue_length_bits: float = field(init=False)  # Q_max, derived via Little's law (Eq. 18)
 

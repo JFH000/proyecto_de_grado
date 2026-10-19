@@ -1,0 +1,5 @@
+# Barrido de comparacion (oct. 2026): la recompensa del paper, la de la Ec. 22, compartida por los K
+# agentes. Solo cambia gamma, que el paper no da: 0.9, el mejor de los diagnosticos (conjuntos
+# aprendizaje, cola y gamma). Frente al barrido propia muestra que aporta la recompensa de cada agente.
+# Una linea con las opciones de main.py para FedAvg, DTE y gossip (las lineas con # no cuentan).
+--gamma 0.9

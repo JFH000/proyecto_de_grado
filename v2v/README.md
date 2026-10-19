@@ -73,8 +73,8 @@ uv run python train_greedy.py --policy umbral --episodes 4000 --seed 0 --output 
 | `--reward-scale` | `1` | Multiplica la recompensa de la que aprenden los agentes; el CSV guarda la del entorno |
 | `--hidden-sizes` | `128 128` | Ancho de cada capa oculta de la red Q; la Tabla III del paper usa `500 250 120` |
 | `--epsilon-end` | `0.05` | Piso de ε, al que llega al 60 % del entrenamiento; la Tabla III usa `0.1` |
-| `--reward-end-of-slot-queue` | apagado | El término de cola de la recompensa juzga la cola con que termina el slot, no la de su inicio (no es la Ec. 22; ver abajo) |
-| `--local-reward` | apagado | Cada agente aprende de su propia recompensa (su cola, su confiabilidad y el CUE de su canal) en vez de la compartida; el CSV guarda la compartida (no es la Ec. 22; ver abajo) |
+| `--reward-end-of-slot-queue` | apagado | Los agentes aprenden de una recompensa cuyo término de cola juzga la cola con que termina el slot, no la de su inicio (no es la Ec. 22; ver abajo) |
+| `--local-reward` | apagado | Cada agente aprende de su propia recompensa (su cola, su confiabilidad y el CUE de su canal) en vez de la compartida (no es la Ec. 22; ver abajo) |
 | `--log-every` | `10` | Cada cuántos episodios imprime la recompensa promedio |
 | `--output` | `runs/rewards.csv` | CSV de salida |
 
@@ -89,7 +89,7 @@ Los dos scripts escriben las mismas columnas, una fila por episodio y agente. La
 | Columna | Significado |
 |---|---|
 | `episode`, `agent` | Episodio y par V2V (`v2v_0` … `v2v_{K-1}`) |
-| `reward` | Recompensa compartida sumada sobre los 200 slots del episodio (igual para todos los agentes) |
+| `reward` | Recompensa compartida de la Ec. 22 sumada sobre los 200 slots del episodio (igual para todos los agentes). Es siempre esta, aunque con `--local-reward` o `--reward-end-of-slot-queue` los agentes aprendan de otra |
 | `cue_rate_mbps` | Celda. Tasa promedio de las CUEs en Mbps, promediada sobre los slots |
 | `v2v_delay_ms` | Retardo de la cola de ese par por la ley de Little (Q/λ), promediado sobre los slots |
 | `outage_rate` | Fracción de slots en que ese par incumple la restricción de confiabilidad (Ec. 15) |
@@ -132,6 +132,32 @@ make sq           # ver la cola
 make run-cpu-test # prueba de velocidad en CPU: FedAvg corto con K = 10 y 30 en la particion short
 ```
 
+**Barridos con nombre.** `SWEEP=<nombre>` deja la salida en `v2v/runs/<nombre>/k<K>/` y corre
+FedAvg, DTE y gossip con las opciones de `main.py` de `jobs/sweeps/<nombre>.txt`. Greedy y la regla
+de umbral no aprenden: con `SWEEP` solo cambia su carpeta, para que cada barrido tenga sus
+referencias al lado. Sin `SWEEP` todo va a `v2v/runs/k<K>/` con las opciones por defecto, como los
+primeros barridos (4000 episodios, la configuración que se cae; ver *Diagnóstico*).
+
+| Barrido | Opciones | Para qué |
+|---|---|---|
+| `propia` | `--local-reward --reward-end-of-slot-queue --gamma 0.9` | El principal: la mejor configuración de los diagnósticos |
+| `paper` | `--gamma 0.9` | La recompensa compartida de la Ec. 22; frente a `propia` muestra qué aporta la recompensa de cada agente |
+
+Los dos guardan en el CSV la recompensa de la Ec. 22, así que se comparan entre sí y con Greedy con
+la misma medida. Cada uno, en CPU:
+
+```bash
+make run-fedavg SWEEP=propia RUN_ON=cpu
+make run-dte SWEEP=propia RUN_ON=cpu
+make run-gossip SWEEP=propia RUN_ON=cpu
+make run-greedy SWEEP=propia
+make run-umbral SWEEP=propia
+```
+
+Los barridos usan 2000 episodios (`EPISODES`): en los de 4000, la recompensa de FedAvg llegaba a su
+mejor punto antes del episodio 2000, mientras ε bajaba, y después solo caía. Los diagnósticos con
+que se eligió la configuración también son de 2000.
+
 Cada trabajo corre `jobs/seeds.sbatch <metodo> <K> <episodios> <semillas...>`: las semillas de un
 mismo K corren a la vez, compartiendo la GPU (la red es tan pequeña que una corrida sola la deja casi
 siempre ociosa, y la QoS de Hypatia da 2 GPUs por usuario). Cada semilla es un proceso aparte,
@@ -159,7 +185,15 @@ Todo se puede cambiar sin editar nada:
 ```bash
 make run-fedavg KS="5 10" SEEDS="0" EPISODES=500
 make run-fedavg SBATCH=echo   # muestra los sbatch sin enviarlos
+make run-fedavg RUN_ON=cpu    # en la particion short, sin GPU (también run-dte, run-gossip y run-diag)
 ```
+
+**CPU o GPU.** La red es tan pequeña que la GPU casi no acelera: casi todo el tiempo se va en el
+simulador. En `make run-cpu-test` (oct. 2026), una corrida con 2 CPUs tardó 4.2 s por episodio con
+K = 10 y 13.7 s con K = 30, la mitad que con 3 corridas compartiendo una GPU (~8 y ~25 s). Además,
+la partición `short` deja usar 120 CPUs por usuario, así que las 54 corridas de un barrido completo
+(3 métodos × 6 K × 3 semillas, 2 CPUs cada una) caben a la vez, mientras que la partición `gpu`
+deja 2 GPUs. Con `RUN_ON=cpu` el límite de tiempo es K × `CPU_MINUTES_PER_K` (60) minutos.
 
 ### Diagnóstico del entrenamiento
 
@@ -178,7 +212,7 @@ variantes que ya tienen CSV no se vuelven a correr. K, episodios y semilla se ca
 | `aprendizaje` | ¿El agente no encuentra la regla de umbral por la red chica (`--hidden-sizes 500 250 120`), por dejar de explorar (`--epsilon-end 0.1`) o por γ = 0.99 (`--gamma 0.9`)? | No le gana a Greedy ninguna. γ = 0.9 casi quita la caída (−8 % contra −34 %) y termina en ~4700; la red y el ε del paper apenas ayudan |
 | `cola` | ¿Aprende a transmitir cuando la cola se llena si el silencio se cobra en el slot que la desborda (`--reward-end-of-slot-queue`), con γ 0.99, 0.9 o 0.5 y con el canal propio en el estado (`--observe-own-channel`)? | No: sola no cambia nada (−33 %); con γ = 0.9 queda como γ = 0.9 sin ella (~4850, la mejor, pero ~800 por debajo de Greedy); γ = 0.5 queda peor |
 | `recompensa` | ¿Aprende la regla de umbral si cada agente recibe su propia recompensa (`--local-reward`), sola, con γ = 0.9, y con γ = 0.9 más la cola al final del slot o el canal propio en el estado? | Es la mayor mejora: las cuatro superan a DTE y a toda variante con la recompensa compartida, y a mitad del entrenamiento a Greedy (5800–6050). Al terminar la exploración olvidan una parte; la mejor (con γ = 0.9 y la cola al final del slot) termina en ~5590, casi igual a Greedy |
-| `gamma` | ¿Hay un γ mejor cerca de 0.9 (0.95, 0.85, 0.8, 0.7)? | Pendiente |
+| `gamma` | ¿Hay un γ mejor cerca de 0.9 (0.95, 0.85, 0.8, 0.7)? | No: 0.9 sigue siendo el mejor (~4700) y 0.85 queda igual (~4650); 0.95 se cae al final (~3330) y 0.8 y 0.7 quedan peor (~4300) |
 | `estabilidad` | Sobre la mejor de `recompensa`, ¿una tasa de aprendizaje más baja (`--lr 3e-4` o `1e-4`), más exploración (`--epsilon-end 0.1`) o un buffer más grande (`--buffer-capacity 100000`) evitan que olvide al terminar la exploración? | Pendiente |
 
 Cada conjunto es un trabajo aparte. La QoS deja 2 GPUs a la vez: un tercer trabajo espera en la
@@ -240,22 +274,29 @@ restricción de cola solo se activa cuando un par deja de transmitir: con potenc
 a Q_max en 100 slots, y ese es el único costo que frena a un par de callarse para proteger al CUE de
 su canal.
 
+**Recompensa de la que aprenden los agentes.** El entorno siempre devuelve la recompensa de la
+Ec. 22, y es la que se guarda en el CSV. Aparte, en el `info` de cada paso, reporta la recompensa de
+la que aprenden los agentes (`learning_reward`): la misma, salvo que se pida alguna de las dos
+opciones siguientes. Así, una corrida con cualquiera de ellas se compara con Greedy y con las demás
+con la misma medida. (Hasta el 19 de octubre de 2026, `--reward-end-of-slot-queue` cambiaba también
+la recompensa guardada: en los CSV de diagnóstico de las variantes `cola-fin*` y `local-*cola-fin*`
+la columna `reward` usa la cola del final del slot.)
+
 **Cola al final del slot (opcional, apagado por defecto).** Con `--reward-end-of-slot-queue`
-(`V2VEnvParams.reward_end_of_slot_queue`), el término de cola de la recompensa juzga la cola que
-deja el slot en vez de Q_k^t, la de su inicio. En la Ec. 22 la acción de un slot no cambia su propio
-término de cola: el slot de silencio que llena la cola lo paga el siguiente. Con la opción lo paga
-el mismo slot. Las observaciones, las métricas (el retardo sigue saliendo de Q_k^t) y la dinámica no
-cambian.
+(`V2VEnvParams.reward_end_of_slot_queue`), el término de cola de la recompensa de la que aprenden
+los agentes juzga la cola que deja el slot en vez de Q_k^t, la de su inicio. En la Ec. 22 la acción
+de un slot no cambia su propio término de cola: el slot de silencio que llena la cola lo paga el
+siguiente. Con la opción lo paga el mismo slot. Las observaciones, las métricas (el retardo sigue
+saliendo de Q_k^t) y la dinámica no cambian.
 
 **Recompensa local (opcional, apagada por defecto).** En la Ec. 22 la recompensa es una sola para
 todos: los K agentes reciben el mismo número en cada slot, y ninguno distingue lo que causó él de lo
-que hicieron los demás. El entorno reporta además, en el `info` de cada paso, una recompensa por par
-(`local_reward`, `reward.compute_local_rewards`): los mismos tres términos, pero solo los que toca
-la acción del par, es decir el CUE del canal que eligió (todos los pares de un canal se juzgan por el
-mismo CUE), su propia cola y su propia confiabilidad. No cuenta la interferencia que el par causa a
-los otros pares V2V de su canal. Con `--local-reward` cada agente aprende de ella; el CSV sigue
-guardando la recompensa compartida, así que las corridas se comparan igual. Sigue la misma regla de
-tiempo de la cola que la compartida (`--reward-end-of-slot-queue` la cambia en las dos).
+que hicieron los demás. Con `--local-reward` (`V2VEnvParams.local_reward`), cada agente aprende de
+una recompensa por par (`reward.compute_local_rewards`): los mismos tres términos, pero solo los que
+toca la acción del par, es decir el CUE del canal que eligió (todos los pares de un canal se juzgan
+por el mismo CUE), su propia cola y su propia confiabilidad. No cuenta la interferencia que el par
+causa a los otros pares V2V de su canal. Combinada con `--reward-end-of-slot-queue`, su término de
+cola también juzga la cola del final del slot.
 
 **Regla de umbral (`agents/threshold_policy.py`, no está en el paper).** Una referencia sin
 entrenar, solo con información local: el canal como Greedy, potencia máxima si el enlace propio es

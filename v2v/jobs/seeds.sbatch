@@ -6,7 +6,8 @@
 # `make run-<metodo>` (raiz del repo) lo usa para lanzar el barrido de K: un trabajo por K, con
 # --cpus-per-task = 2 por semilla. El entorno tiene que estar sincronizado antes (`uv sync`, que los
 # targets del Makefile ya hacen).
-# Salida por semilla: runs/k<K>/<metodo>_seed<semilla>.csv y su .json. El progreso de cada semilla
+# Salida por semilla: runs/k<K>/<metodo>_seed<semilla>.csv y su .json (runs/<barrido>/k<K>/ con
+# V2V_SWEEP=<barrido>, que jobs/baseline.sbatch hereda; ver ahi). El progreso de cada semilla
 # queda en jobs/logs/<nombre del trabajo>-<id>-s<semilla>.out; el .out del trabajo solo resume.
 #SBATCH --job-name=v2v-seeds
 #SBATCH --mem=32gb
@@ -50,7 +51,7 @@ fi
 pids=()
 for seed in "${SEEDS[@]}"; do
   log="${LOG_PREFIX}-s${seed}.out"
-  echo "semilla ${seed} -> runs/k${K}/${METHOD}_seed${seed}.csv (progreso en ${log})"
+  echo "semilla ${seed} -> runs${V2V_SWEEP:+/${V2V_SWEEP}}/k${K}/${METHOD}_seed${seed}.csv (progreso en ${log})"
   bash jobs/baseline.sbatch "$METHOD" "$seed" "$EPISODES" "$K" > "$log" 2>&1 &
   pids+=("$!")
 done

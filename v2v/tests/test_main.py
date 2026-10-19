@@ -496,15 +496,17 @@ def test_cli_defaults_for_network_exploration_floor_and_queue_reward_are_recorde
     assert meta["reward_end_of_slot_queue"] is False
 
 
-def test_local_reward_trains_each_agent_on_its_own_reward_but_logs_the_shared_one():
-    # 10 slots never fill a 128-sample minibatch, so nobody learns and both runs act the same.
-    params = make_tiny_params()
-    plain_records, _ = run_training(params, episodes=2, seed=0, fedavg_every=2, log_every=100)
-    local_records, local_agents = run_training(
-        params, episodes=2, seed=0, fedavg_every=2, log_every=100, local_reward=True
+def test_agents_learn_from_the_envs_learning_reward_but_the_csv_logs_the_papers():
+    # 10 slots never fill a 128-sample minibatch, so nobody learns and every run acts the same.
+    plain_records, _ = run_training(make_tiny_params(), episodes=2, seed=0, fedavg_every=2, log_every=100)
+    end_records, _ = run_training(
+        make_tiny_params(reward_end_of_slot_queue=True), episodes=2, seed=0, fedavg_every=2, log_every=100
     )
+    params = make_tiny_params(local_reward=True)
+    local_records, local_agents = run_training(params, episodes=2, seed=0, fedavg_every=2, log_every=100)
     assert [r.reward for r in local_records] == [r.reward for r in plain_records]
-    # Replay the stored actions to get the local reward the env reported for each of them.
+    assert [r.reward for r in end_records] == [r.reward for r in plain_records]
+    # Replay the stored actions to get the learning reward the env reported for each of them.
     env = V2VEnv(params)
     expected = {agent_id: [] for agent_id in local_agents}
     for ep in range(2):
@@ -514,7 +516,7 @@ def test_local_reward_trains_each_agent_on_its_own_reward_but_logs_the_shared_on
             actions = {a: int(agent.buffer.actions[step]) for a, agent in local_agents.items()}
             _, _, _, _, infos = env.step(actions)
             for a in local_agents:
-                expected[a].append(infos[a]["local_reward"])
+                expected[a].append(infos[a]["learning_reward"])
     for agent_id, agent in local_agents.items():
         assert agent.buffer.rewards[: len(agent.buffer)] == pytest.approx(expected[agent_id])
 
