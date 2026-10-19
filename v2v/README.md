@@ -67,6 +67,7 @@ uv run python train_greedy.py --policy umbral --episodes 4000 --seed 0 --output 
 | `--num-v2v-pairs` | `5` | K, número de pares V2V (agentes) |
 | `--device` | `auto` | `cuda` si hay GPU, si no `cpu` |
 | `--gamma` | `0.99` | Descuento γ de los objetivos de Q-learning (el paper no lo da) |
+| `--lr` | `0.001` | Tasa de aprendizaje (Adam) de la red Q de cada agente |
 | `--observe-own-channel` | apagado | Agrega al estado de cada agente un one-hot del canal que eligió en el slot anterior (no está en el estado del paper; ver abajo) |
 | `--buffer-capacity` | `10000` | Transiciones que guarda el replay buffer de cada agente |
 | `--reward-scale` | `1` | Multiplica la recompensa de la que aprenden los agentes; el CSV guarda la del entorno |
@@ -128,6 +129,7 @@ make run-fedavg   # 6 trabajos de GPU: lo mismo con FedAvg
 make run-dte      # 6 trabajos de GPU: lo mismo con DTE
 make run-gossip   # 6 trabajos de GPU: lo mismo con gossip
 make sq           # ver la cola
+make run-cpu-test # prueba de velocidad en CPU: FedAvg corto con K = 10 y 30 en la particion short
 ```
 
 Cada trabajo corre `jobs/seeds.sbatch <metodo> <K> <episodios> <semillas...>`: las semillas de un
@@ -175,11 +177,12 @@ variantes que ya tienen CSV no se vuelven a correr. K, episodios y semilla se ca
 | `caida` | ¿FedAvg se cae cuando ε llega a su piso por el buffer chico (`--buffer-capacity 100000`) o por la recompensa sin escalar (`--reward-scale 0.01`)? | No: ninguna variante deja de caerse ni le gana a Greedy |
 | `aprendizaje` | ¿El agente no encuentra la regla de umbral por la red chica (`--hidden-sizes 500 250 120`), por dejar de explorar (`--epsilon-end 0.1`) o por γ = 0.99 (`--gamma 0.9`)? | No le gana a Greedy ninguna. γ = 0.9 casi quita la caída (−8 % contra −34 %) y termina en ~4700; la red y el ε del paper apenas ayudan |
 | `cola` | ¿Aprende a transmitir cuando la cola se llena si el silencio se cobra en el slot que la desborda (`--reward-end-of-slot-queue`), con γ 0.99, 0.9 o 0.5 y con el canal propio en el estado (`--observe-own-channel`)? | No: sola no cambia nada (−33 %); con γ = 0.9 queda como γ = 0.9 sin ella (~4850, la mejor, pero ~800 por debajo de Greedy); γ = 0.5 queda peor |
-| `recompensa` | ¿Aprende la regla de umbral si cada agente recibe su propia recompensa (`--local-reward`), sola, con γ = 0.9, y con γ = 0.9 más la cola al final del slot o el canal propio en el estado? | Pendiente |
+| `recompensa` | ¿Aprende la regla de umbral si cada agente recibe su propia recompensa (`--local-reward`), sola, con γ = 0.9, y con γ = 0.9 más la cola al final del slot o el canal propio en el estado? | Es la mayor mejora: las cuatro superan a DTE y a toda variante con la recompensa compartida, y a mitad del entrenamiento a Greedy (5800–6050). Al terminar la exploración olvidan una parte; la mejor (con γ = 0.9 y la cola al final del slot) termina en ~5590, casi igual a Greedy |
 | `gamma` | ¿Hay un γ mejor cerca de 0.9 (0.95, 0.85, 0.8, 0.7)? | Pendiente |
+| `estabilidad` | Sobre la mejor de `recompensa`, ¿una tasa de aprendizaje más baja (`--lr 3e-4` o `1e-4`), más exploración (`--epsilon-end 0.1`) o un buffer más grande (`--buffer-capacity 100000`) evitan que olvide al terminar la exploración? | Pendiente |
 
 Cada conjunto es un trabajo aparte. La QoS deja 2 GPUs a la vez: un tercer trabajo espera en la
-cola hasta que se libere una. El notebook muestra `aprendizaje`, `cola`, `recompensa` y `gamma` juntos, con
+cola hasta que se libere una. El notebook muestra `recompensa`, `gamma` y `estabilidad` juntos, con
 Greedy, DTE y la regla de umbral como referencias (`make run-umbral` la corre para todo K en CPU).
 
 Para traer los resultados a la máquina local, desde la raíz: `make pull-runs`. Después,

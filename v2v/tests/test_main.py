@@ -527,3 +527,13 @@ def test_cli_local_reward_is_recorded_and_off_by_default(tmp_path, monkeypatch):
         main.main()
         meta = json.loads(output.with_suffix(".json").read_text())
         assert meta["local_reward"] is expected
+
+
+def test_cli_passes_the_learning_rate_to_the_agents_and_records_it(tmp_path, monkeypatch):
+    base_argv = ["main.py", "--episodes", "1", "--num-v2v-pairs", "2", "--device", "cpu", "--log-every", "1"]
+    for extra, expected in ((["--lr", "0.0003"], 0.0003), ([], 0.001)):
+        output = tmp_path / f"lr{expected}" / "fedavg_seed0.csv"
+        monkeypatch.setattr("sys.argv", [*base_argv, *extra, "--output", str(output)])
+        main.main()
+        meta = json.loads(output.with_suffix(".json").read_text())
+        assert meta["lr"] == expected

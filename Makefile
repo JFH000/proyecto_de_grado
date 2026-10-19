@@ -1,4 +1,4 @@
-.PHONY: cpu gpu sq run-greedy run-umbral run-fedavg run-dte run-gossip run-diag pull-runs paper paper-watch paper-clean
+.PHONY: cpu gpu sq run-greedy run-umbral run-fedavg run-dte run-gossip run-diag run-cpu-test pull-runs paper paper-watch paper-clean
 
 cpu:
 	srun --mem=64gb --time=12:00:00 -p medium --pty bash -i
@@ -82,16 +82,35 @@ run-gossip:
 # Salida en v2v/runs/diag/<variante>/k<K>/, fuera del barrido; las variantes que ya tienen CSV no se
 # vuelven a correr. Se analiza con notebooks/diagnostico.ipynb. Ejemplo:
 #   make run-diag DIAG_SET=cola
-# El limite de tiempo deja margen: 4 variantes juntas tardaron ~5.5 h con K = 10 y 2000 episodios.
+# El limite de tiempo deja margen: 4 variantes juntas tardaron 5.0-5.6 h con K = 10 y 2000 episodios.
+# No mas: con la particion llena, Slurm solo mete un trabajo en los huecos (backfill) si su limite cabe.
 DIAG_SET := aprendizaje
 DIAG_K := 10
 DIAG_EPISODES := 2000
 DIAG_SEED := 0
-DIAG_TIME := 20:00:00
+DIAG_TIME := 08:00:00
 
 run-diag:
 	cd v2v && uv sync --frozen && $(SBATCH) -p gpu --gres=gpu:1 --cpus-per-task=8 --time=$(DIAG_TIME) \
 		-J v2v-diag-$(DIAG_SET)-k$(DIAG_K) jobs/diag.sbatch $(DIAG_SET) $(DIAG_K) $(DIAG_EPISODES) $(DIAG_SEED)
+
+# Prueba de velocidad en CPU: una corrida corta de FedAvg por cada K de CPU_TEST_KS en la particion
+# short (120 CPUs por usuario, contra 2 GPUs en gpu), con CPUS_PER_SEED CPUs, los mismos que tendria
+# cada corrida de un barrido en CPU. La red es tan pequena que la GPU casi no acelera: con 3-4 corridas
+# compartiendo una GPU, cada episodio tarda ~8-9 s con K = 10 y ~25 s con K = 30. Deja
+# v2v/runs/cputest/k<K>/fedavg_seed0.csv, fuera del barrido; wall_time_s / episodios, en su .json, es
+# lo que se compara. Correr en Hypatia desde la raiz del repo.
+CPU_TEST_KS := 10 30
+CPU_TEST_EPISODES := 20
+
+run-cpu-test:
+	cd v2v && uv sync --frozen && for k in $(CPU_TEST_KS); do \
+		$(SBATCH) -p short --cpus-per-task=$(CPUS_PER_SEED) --mem=8gb --time=02:00:00 -J v2v-cputest-k$$k \
+			--output=jobs/logs/%x-%j.out \
+			--wrap "export OMP_NUM_THREADS=$(CPUS_PER_SEED) MKL_NUM_THREADS=$(CPUS_PER_SEED) OPENBLAS_NUM_THREADS=$(CPUS_PER_SEED) PYTHONUNBUFFERED=1; \
+				uv run --no-sync python main.py --episodes $(CPU_TEST_EPISODES) --num-v2v-pairs $$k --device cpu \
+				--log-every 5 --output runs/cputest/k$$k/fedavg_seed0.csv"; \
+	done
 
 # Trae v2v/runs/ de Hypatia a esta maquina (correr en la maquina local).
 HYPATIA_HOST := hypatia

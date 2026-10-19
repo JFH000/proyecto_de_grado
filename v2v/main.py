@@ -328,6 +328,10 @@ def main() -> None:
         help="Multiplies the reward the agents learn from (the CSV keeps the environment's reward)",
     )
     parser.add_argument(
+        "--lr", type=float, default=None,
+        help="Adam learning rate of each agent's Q-network (default: D3QNAgent's, 1e-3)",
+    )
+    parser.add_argument(
         "--gamma", type=float, default=None,
         help="Discount factor of the agents' Q-learning targets (default: D3QNAgent's, 0.99)",
     )
@@ -378,6 +382,7 @@ def main() -> None:
         name: value
         for name, value in (
             ("buffer_capacity", args.buffer_capacity),
+            ("lr", args.lr),
             ("gamma", args.gamma),
             ("hidden_sizes", args.hidden_sizes),
         )
@@ -415,6 +420,7 @@ def main() -> None:
             gossip_neighbors=args.gossip_neighbors,
             buffer_capacity=first_agent.buffer.capacity,
             gamma=first_agent.gamma,
+            lr=first_agent.optimizer.param_groups[0]["lr"],
             observe_own_channel=params.observe_own_channel,
             reward_end_of_slot_queue=params.reward_end_of_slot_queue,
             hidden_sizes=list(first_agent.online.hidden_sizes),

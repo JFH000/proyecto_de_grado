@@ -1,0 +1,13 @@
+# Sexto diagnostico (oct. 2026), la ultima ronda antes de congelar la configuracion. Con
+# --local-reward los agentes ya superan a Greedy a mitad del entrenamiento: la mejor variante,
+# local-gamma0.9-cola-fin, llega a ~6050 hacia el episodio 1100. Pero cuando epsilon llega a su piso
+# (episodio 1200) olvidan una parte y terminan en 5586, casi lo mismo que Greedy (5641).
+# Pregunta: alguno de los estabilizadores de siempre evita que olviden? Todas parten de la mejor y
+# cambian una sola cosa: una tasa de aprendizaje mas baja (la de siempre es 1e-3), seguir explorando
+# un poco mas o un buffer 10 veces mas grande.
+# local-gamma0.9-cola-fin ya corrio en el conjunto recompensa: no se vuelve a correr.
+local-gamma0.9-cola-fin --local-reward --gamma 0.9 --reward-end-of-slot-queue
+mejor-lr3e-4 --local-reward --gamma 0.9 --reward-end-of-slot-queue --lr 3e-4
+mejor-lr1e-4 --local-reward --gamma 0.9 --reward-end-of-slot-queue --lr 1e-4
+mejor-eps0.1 --local-reward --gamma 0.9 --reward-end-of-slot-queue --epsilon-end 0.1
+mejor-buffer100k --local-reward --gamma 0.9 --reward-end-of-slot-queue --buffer-capacity 100000
