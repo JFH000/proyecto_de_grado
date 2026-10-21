@@ -1,0 +1,7 @@
+# Gossip con a lo sumo 2 vecinos al azar por ronda (oct. 2026): la idea de la reunion 4 (como Ge et
+# al., 2024). Lo demas, igual que el barrido propia. Gossip con todos los vecinos a 300 m manda mas
+# modelos en total que FedAvg desde K = 10; este barrido mide si limitarlos baja ese costo sin perder
+# recompensa. Solo se corre gossip (make run-gossip SWEEP=propia-vecinos2): las referencias estan en
+# runs/propia/.
+# Una linea con las opciones de main.py para FedAvg, DTE y gossip (las lineas con # no cuentan).
+--local-reward --reward-end-of-slot-queue --gamma 0.9 --gossip-neighbors 2

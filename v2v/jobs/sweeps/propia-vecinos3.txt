@@ -1,0 +1,4 @@
+# Gossip con a lo sumo 3 vecinos al azar por ronda (oct. 2026): como propia-vecinos2, con 3. Solo se
+# corre gossip (make run-gossip SWEEP=propia-vecinos3): las referencias estan en runs/propia/.
+# Una linea con las opciones de main.py para FedAvg, DTE y gossip (las lineas con # no cuentan).
+--local-reward --reward-end-of-slot-queue --gamma 0.9 --gossip-neighbors 3

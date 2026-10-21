@@ -142,6 +142,7 @@ primeros barridos (4000 episodios, la configuración que se cae; ver *Diagnósti
 |---|---|---|
 | `propia` | `--local-reward --reward-end-of-slot-queue --gamma 0.9` | El principal: la mejor configuración de los diagnósticos |
 | `paper` | `--gamma 0.9` | La recompensa compartida de la Ec. 22; frente a `propia` muestra qué aporta la recompensa de cada agente |
+| `propia-vecinos2`, `propia-vecinos3` | las de `propia` y `--gossip-neighbors 2` o `3` | Solo gossip: si tomar a lo sumo 2 o 3 vecinos al azar por ronda, en vez de todos los que están a 300 m, baja la comunicación sin perder recompensa. Las referencias son las de `runs/propia/` |
 
 Los dos guardan en el CSV la recompensa de la Ec. 22, así que se comparan entre sí y con Greedy con
 la misma medida. Cada uno, en CPU:
