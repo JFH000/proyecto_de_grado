@@ -1,17 +1,25 @@
 \chapter{Proposed architecture}
 
 \section{The agent of each pair}
+% El agente D3QN de cada par: la red (dos capas ocultas de 128 neuronas y cabezas de duelo), la red objetivo, el buffer con PER, la exploración y el entrenamiento.
 
 \section{Centralized aggregation: FedAvg}
+% El esquema de referencia: cada 50 slots la BS recibe los pesos de todos los agentes, los promedia ponderados por su experiencia y les devuelve el promedio.
 
 \section{Decentralized aggregation by gossip}
+% La propuesta: en las mismas rondas, cada agente promedia su red solo con las de sus vecinos a 300 m o menos, sin pasar por la BS.
 
 \subsection{Why averaging with neighbors makes sense}
+% Todos los pares tienen la misma observación, las mismas acciones y la misma forma de recompensa, así que una misma red les sirve a todos y compartir pesos transfiere experiencia entre vecinos.
 
 \subsection{Variant with at most \texorpdfstring{$S$}{S} neighbors}
+% Promediar en cada ronda con a lo sumo S vecinos elegidos al azar (siguiendo a Ge et al) para acotar la comunicación.
 
 \section{Individual reward}
+% La recompensa propia de cada agente (su cola, la confiabilidad de su enlace y el CUE del canal que eligió) en lugar de la suma de todos, y qué alineación se sacrifica a cambio de que sea más fácil de aprender.
 
 \section{Resulting methods}
+% Tabla de combinaciones de agregación y recompensa: el esquema original (FedAvg con recompensa compartida), la propuesta (gossip con recompensa individual) y las demás, que separan el efecto de cada cambio.
 
 \section{Communication cost}
+% Cómo se mide el costo (transferencias de modelos de 121 588 bytes y carga del nodo más cargado) y las fórmulas del costo de FedAvg y de gossip.

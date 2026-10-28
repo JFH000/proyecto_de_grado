@@ -1,25 +1,37 @@
 \chapter{Results}
 
 \section{Does the implementation reproduce the original scheme?}
+% Comparar la tasa media de los CUE con la Fig. 3 de Li et al. para FedAvg y Greedy y comprobar que se mantienen las tendencias.
 
 \section{Diagnosis: why the original scheme degrades}
+% Por qué el esquema original olvida lo aprendido cuando termina la exploración con gamma = 0.99, y cómo el diagnóstico llevó a la configuración de los barridos.
 
 \section{Individual reward versus shared reward}
+% Comparar los barridos con recompensa individual y compartida, método por método y semilla por semilla.
 
 \section{Gossip aggregation versus FedAvg}
+% Recompensa final de todos los métodos con la recompensa individual y comparación de gossip con cada uno, semilla por semilla.
 
 \section{The complete proposal versus the original scheme}
+% La propuesta (gossip con recompensa individual) y su variante con S = 2 frente al esquema original (FedAvg con recompensa compartida).
 
 \section{Learning speed and stability}
+% Cuánto mejora cada método, en qué episodio alcanza el 90 % de esa mejora y cuánto pierde al final del entrenamiento.
 
 \section{What the agents learn}
+% Medidas de calidad de servicio y de comportamiento (qué canales y potencias eligen) que explican las diferencias en la recompensa.
 
 \section{Neighborhoods and consensus}
+% Número de vecinos según K, pares aislados y qué tan parecidos terminan los modelos de los agentes con gossip.
 
 \section{Communication cost}
+% Modelos transferidos y carga del nodo más cargado por episodio con cada forma de agregación, comparados con FedAvg.
 
 \section{The threshold rule as a reference}
+% Por qué la regla de umbral, con solo información local, supera a todos los métodos que aprenden y qué dice eso de las políticas aprendidas.
 
 \section{Discussion}
+% Por qué ayuda la recompensa individual, por qué gossip ayuda solo con la recompensa individual y cuál es el papel de la BS.
 
 \section{Threats to validity}
+% Pocas semillas, ajuste de la configuración con el diagnóstico, dos cambios a la vez en la recompensa individual, modelo simplificado, intercambios ideales y elección de las medidas.

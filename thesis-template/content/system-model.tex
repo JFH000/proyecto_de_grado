@@ -1,25 +1,37 @@
 \chapter{System model and problem formulation}
 
 \section{Scenario}
+% Celda de 500 m de radio con la BS en el centro, 15 CUE con un canal de subida cada uno, K pares V2V (5 a 30), cómo se sortean las posiciones y quiénes son vecinos (300 m o menos).
 
 \section{Channel model}
+% Las ganancias de todos los enlaces (gran y pequeña escala), la distancia mínima y qué ganancias conoce cada agente.
 
 \section{Signal quality and rates}
+% SINR de cada CUE en la BS y de cada par V2V, y las tasas de Shannon que resultan.
 
 \section{Queue and delay}
+% Dinámica de la cola de cada transmisor con llegada constante de 1 Mbps, el desborde y la relación con el retardo.
 
 \section{Reliability}
+% Probabilidad de interrupción (outage) con umbral de 5 dB y p_o = 0.1, y cómo se convierte en un umbral sobre la ganancia del enlace.
 
 \section{The optimization problem}
+% Maximizar la suma de las tasas de los CUE sujeta a tasa mínima, retardo máximo y confiabilidad de los pares, como lo plantean Li et al
 
 \section{Formulation as a multi-agent learning problem}
+% Cada par V2V es un agente; juntos forman un Dec-POMDP.
 
 \subsection{Observation}
+% El vector de 46 números que observa cada agente: su enlace en cada canal, cada CUE hacia la BS, vecinos en cada canal y su cola.
 
 \subsection{Action}
+% La pareja canal y potencia: 15 canales por 4 niveles, 60 acciones.
 
 \subsection{Shared reward}
+% La recompensa compartida que calcula la BS al final de cada slot: términos de tasa de los CUE, de colas y de confiabilidad de los pares, con sus pesos lambda.
 
 \subsection{Objective of each agent}
+% Cada agente maximiza su retorno descontado; con la recompensa compartida debe descubrir qué parte del resultado depende de su propia acción.
 
 \subsection{What happens in a slot}
+% El orden de los eventos en un slot: observar, elegir, calcular SINR, tasas y colas, recibir la recompensa y aprender.

@@ -1,15 +1,22 @@
 \chapter{Implementation}
 
 \section{Code organization}
+% Las tres partes del código (entorno, agentes y programas de entrenamiento y análisis), la tabla de módulos y por qué la separación sigue a la del modelo.
 
 \section{The environment}
+% El entorno con la interfaz paralela de PettingZoo: reset y step, el sorteo de posiciones con la semilla y el cálculo de SINR, colas y recompensas.
 
 \section{The agents and the aggregation}
+% Cada agente como objeto con sus redes, su buffer, su optimizador y su generador aleatorio, y la implementación de FedAvg y gossip (con un fragmento de código).
 
 \section{Verification}
+% Las 191 pruebas automáticas y sus tres tipos: fórmulas comparadas con valores calculados a mano, propiedades e integración.
 
 \section{Running on the cluster}
+% La ejecución en Hypatia con Slurm: recursos por corrida, cómo se agrupan las semillas en trabajos y cómo se describe cada barrido.
 
 \section{From the logs to this document}
+% Cómo las tablas y figuras de resultados se generan automáticamente a partir de los registros de las corridas.
 
 \section{Differences from the original paper}
+% Tablas con cada diferencia frente a Li et al. (simplificaciones del canal, la geometría y el tráfico, y valores que el artículo no reporta) y su justificación.

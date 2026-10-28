@@ -1,69 +1,103 @@
 \chapter{Background}
 
 \section{Vehicular communications and spectrum reuse}
+% Lo necesario de comunicaciones inalámbricas para entender el modelo: interferencia, calidad de una señal y relación entre cola y retardo.
 
 \subsection{Vehicle-to-vehicle links and the cellular network}
+% Qué son V2X y V2V, qué es un par V2V, qué mensajes lleva y cómo reutiliza los canales de subida de los CUE a costa de interferirlos.
 
 \subsection{Power and decibels}
+% Escala logarítmica: razones de potencia en dB y potencias absolutas en dBm, con ejemplos de conversión.
 
 \subsection{Channel gain: distance and fading}
+% La ganancia h = alpha * g: pérdida por distancia (gran escala) y desvanecimiento rápido (pequeña escala).
 
 \subsection{Signal-to-interference-plus-noise ratio}
+% Definición de la SINR, potencia del ruido térmico e interferencia de otros transmisores en el mismo canal.
 
 \subsection{Channel capacity}
+% Fórmula de Shannon, R = W log2(1 + SINR), y cómo crece la tasa con la SINR.
 
 \subsection{Queues, delay, and Little's law}
+% Cómo crece y se vacía una cola según la tasa de llegada y la de transmisión, y la ley de Little, que relaciona el tamaño de la cola con el retardo.
 
 \section{Reinforcement learning}
+% Cómo aprende un agente por refuerzo, desde la interacción con el entorno hasta Q-learning.
 
 \subsection{Agent, environment, and reward}
+% El ciclo estado, acción, recompensa y nuevo estado, y qué es una política.
 
 \subsection{Return and discount factor}
+% El retorno como suma descontada de recompensas y el papel del factor de descuento gamma.
 
 \subsection{Markov decision processes}
+% Los cinco elementos de un MDP y la propiedad de Markov.
 
 \subsection{Value functions and the Bellman equation}
+% La función Q de una política, la función Q óptima y la ecuación de Bellman.
 
 \subsection{Q-learning}
+% La regla de actualización de Q-learning y el error de diferencia temporal (TD).
 
 \subsection{Exploration versus exploitation}
+% La política epsilon-greedy y cómo se reduce epsilon durante el entrenamiento.
 
 \section{Deep reinforcement learning}
+% Cómo se combina el aprendizaje por refuerzo con redes neuronales y las mejoras que forman el agente D3QN.
 
 \subsection{Neural networks as function approximators}
+% Por qué no sirve una tabla cuando el estado es continuo y cómo una red neuronal con pesos theta aproxima la función Q.
 
 \subsection{Deep Q-networks}
+% La pérdida de la DQN, el buffer de repetición de experiencia y la red objetivo Mnih et al.
 
 \subsection{Double DQN}
+% Por qué el máximo sobrestima los valores y cómo la doble DQN separa elegir la acción de evaluarla.
 
 \subsection{Dueling architecture}
+% Estimar por separado el valor del estado V(s) y la ventaja A(s, a), y cómo se combinan en Q.
 
 \subsection{Prioritized experience replay}
+% Muestrear las transiciones según su error TD, el exponente de prioridad y los pesos de importancia que corrigen el sesgo.
 
 \subsection{Huber loss}
+% Pérdida cuadrática para errores pequeños y lineal para errores grandes, para evitar saltos bruscos en los pesos.
 
 \subsection{The D3QN network}
+% Cómo se combinan duelo, doble DQN y PER en el agente que usa cada par V2V.
 
 \section{Multi-agent reinforcement learning}
+% Qué cambia cuando aprenden varios agentes a la vez en el mismo entorno.
 
 \subsection{From one agent to many}
+% Agentes que comparten un entorno, la acción conjunta y la formalización como Dec-POMDP.
 
 \subsection{Why it is hard}
+% Las cuatro dificultades propias del caso multiagente: observabilidad parcial, no estacionariedad, escalabilidad y asignación de crédito.
 
 \subsection{Ways to train multiple agents}
+% Entrenamiento y ejecución centralizados, CTDE y DTE (clasificación de Amato), y dónde encaja el aprendizaje federado.
 
 \section{Federated learning}
+% La idea del aprendizaje federado y su aplicación al aprendizaje por refuerzo.
 
 \subsection{The idea and the FedAvg algorithm}
+% Entrenar sin mover los datos: copias locales del modelo, un servidor que promedia y la fórmula de FedAvg (McMahan et al).
 
 \subsection{Federated reinforcement learning}
+% Aplicar el promedio federado a agentes de refuerzo; FRL horizontal, que es el caso que uso.
 
 \subsection{The cost of the central server}
+% El servidor como punto único de falla, cuello de botella de la comunicación y entidad en la que todos deben confiar.
 
 \section{Decentralized federated learning and gossip}
+% Cómo aprender sin servidor, intercambiando modelos solo entre vecinos.
 
 \subsection{Communication graph}
+% Nodos, aristas, vecinos y grado; grafos geométricos aleatorios como modelo de una red inalámbrica.
 
 \subsection{Averaging with neighbors}
+% Algoritmos de gossip: una ronda de promedio con los vecinos y cómo la estructura del grafo determina la velocidad de convergencia al consenso.
 
 \subsection{Learning and averaging at the same time}
+% Combinar pasos de entrenamiento local con rondas de promedio (D-PSGD de Lian et al) y su costo de comunicación frente a la versión centralizada.
