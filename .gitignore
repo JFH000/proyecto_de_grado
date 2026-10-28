@@ -227,3 +227,6 @@ __marimo__/
 
 *.out
 *.err
+
+# Copia local de la plantilla de tesis (no se versiona)
+thesis-template-ignore/
