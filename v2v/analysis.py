@@ -1,8 +1,9 @@
 """Metrics computed from finished runs rather than during training, and the loaders the
 notebooks share.
 
-Convergence speed (episodes until the reward settles) is the paper's third headline metric
-(Li et al. 2022, Fig. 10) and needs the whole learning curve, so it lives here. The loaders
+Convergence speed is the paper's third headline metric (Li et al. 2022, Fig. 10) and needs the
+whole learning curve, so it lives here, in two forms: episodes until the reward settles
+(convergence_episode) and episodes until it covers most of its gain (episodes_to_final_gain). The loaders
 read the K sweep as `make run-greedy` (and the other methods' jobs) leave it:
 runs/k<K>/<method>_seed<seed>.csv, with a .json of settings and wall time next to each CSV.
 """
@@ -41,6 +42,32 @@ def convergence_episode(
     if outside[-1] == moving_average.size - 1:
         return math.nan
     return float(outside[-1] + 1 + window - 1)
+
+
+def episodes_to_final_gain(
+    rewards: Sequence[float],
+    fraction: float = 0.9,
+    window: int = 50,
+    final_fraction: float = 0.1,
+) -> float:
+    """First episode at which the `window`-episode moving average of the reward has covered
+    `fraction` of the run's gain, from its start (the mean of the first `window` episodes) to its
+    final value (the mean of the last `final_fraction` of the episodes). It counts the first
+    arrival, even if the reward drops later. NaN if the run ends no better than it started.
+
+    Unlike convergence_episode it does not need the curve to settle: in the 2000-episode sweeps
+    the learners' rewards keep moving to the end, so they rarely stay in a band around the final
+    value.
+    """
+    values = np.asarray(rewards, dtype=float)
+    start = values[:window].mean()
+    final = values[-max(1, math.ceil(final_fraction * len(values))) :].mean()
+    if final <= start:
+        return math.nan
+    target = start + fraction * (final - start)
+    moving_average = np.convolve(values, np.ones(window) / window, mode="valid")  # index i ends at episode i + window - 1
+    reached = np.flatnonzero(moving_average >= target - 1e-9 * max(1.0, abs(target)))  # tolerance for rounding
+    return float(reached[0] + window - 1) if reached.size else math.nan
 
 
 def _run_files(root: Path, suffix: str, methods: Sequence[str] | None):

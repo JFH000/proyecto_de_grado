@@ -5,6 +5,7 @@ import pandas as pd
 
 from analysis import (
     convergence_episode,
+    episodes_to_final_gain,
     final_values,
     load_metadata,
     load_runs,
@@ -33,6 +34,35 @@ def test_convergence_episode_is_nan_when_the_curve_is_still_moving_at_the_end():
 def test_convergence_episode_handles_negative_rewards():
     rewards = [-100.0] * 50 + [-10.0] * 150
     assert convergence_episode(rewards, window=10) == 59
+
+
+def test_episodes_to_final_gain_is_where_the_moving_average_covers_90_percent_of_the_gain():
+    # Start 0, final 10: the target is 9. The 10-episode window ending at episode 108 holds one 0 and
+    # nine 10s (average 9); the one ending at 107 averages 8.
+    rewards = [0.0] * 100 + [10.0] * 100
+    assert episodes_to_final_gain(rewards, window=10) == 108
+
+
+def test_episodes_to_final_gain_follows_the_requested_fraction():
+    rewards = [float(r) for r in range(100)] + [100.0] * 100  # a ramp, then flat at 100
+    assert episodes_to_final_gain(rewards, window=1) == 90
+    assert episodes_to_final_gain(rewards, fraction=0.5, window=1) == 50
+
+
+def test_episodes_to_final_gain_counts_the_first_arrival_even_if_the_reward_drops_later():
+    rewards = [0.0] * 50 + [10.0] * 50 + [5.0] * 100  # final 5: target 4.5, first reached at 50
+    assert episodes_to_final_gain(rewards, window=1) == 50
+
+
+def test_episodes_to_final_gain_handles_negative_rewards():
+    # Start -100, final -10, target -19: the window ending at 58 holds one -100 and nine -10s.
+    rewards = [-100.0] * 50 + [-10.0] * 150
+    assert episodes_to_final_gain(rewards, window=10) == 58
+
+
+def test_episodes_to_final_gain_is_nan_when_the_run_ends_no_better_than_it_started():
+    assert math.isnan(episodes_to_final_gain([10.0] * 100 + [0.0] * 100, window=10))
+    assert math.isnan(episodes_to_final_gain([5.0] * 200, window=10))
 
 
 def write_run(root, k, method, seed, rows, metadata=None):
