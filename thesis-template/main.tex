@@ -4,6 +4,30 @@
 
 \everymath{\displaystyle}
 
+\usepackage{mathtools}
+\usepackage{bm}
+\usepackage{siunitx}
+\sisetup{group-separator={,}, group-minimum-digits=4, per-mode=symbol, detect-all}
+\usetikzlibrary{positioning, arrows.meta, fit, backgrounds, calc, shapes.geometric, decorations.pathreplacing}
+
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\vtheta}{\bm{\theta}}
+\newcommand{\Kset}{\mathcal{K}}
+\newcommand{\Mset}{\mathcal{M}}
+\newcommand{\Nset}{\mathcal{N}}
+\newcommand{\argmax}{\operatorname*{arg\,max}}
+\newcommand{\argmin}{\operatorname*{arg\,min}}
+
+\newenvironment{keyidea}
+  {\par\medskip\noindent\begingroup\linespread{1.25}\selectfont
+   \begin{tabular}{@{}p{0.97\linewidth}@{}}\toprule\textbf{Key idea.}\ }
+  {\\\bottomrule\end{tabular}\endgroup\par\medskip}
+
+\newenvironment{wherelist}
+  {\par\noindent where\begin{itemize}[nosep, leftmargin=1.6em, label=\textendash]}
+  {\end{itemize}\par\smallskip}
+
 
 
 \begin{document}
