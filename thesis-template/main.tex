@@ -1,0 +1,42 @@
+% Copyright (c) 2019 FLAG lab
+
+\documentclass[american]{flag}
+
+\everymath{\displaystyle}
+
+
+
+\begin{document}
+
+\frontmatter
+\KOMAoptions{open=left}
+\thispagestyle{empty}
+
+\include{title}
+\include{abstract}
+\include{acknowledgements}
+\tableofcontents
+\listoffigures
+\KOMAoptions{open=right}
+
+\mainmatter
+\input{chapter-titlepage}
+\include{content/introduction}
+%\include{CHAPTER_FILE_NAME}
+
+
+%Adding appendices if needed
+\appendix
+\include{appendix/appendix-a}
+
+\backmatter
+\bibliography{bib/local,bib/writing}
+
+\printindex
+\addcontentsline{toc}{chapter}{List of Terms}
+\printindex[symbols]
+\include{acronym}
+\end{document}
+
+\endinput
+

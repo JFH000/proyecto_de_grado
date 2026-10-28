@@ -1,0 +1,17 @@
+/main.pdf
+*.aux
+*.log
+*.idx
+*.ind
+/symbols.ilg
+/main.bbl
+/main.blg
+/main.toc
+/main.ilg
+/main.lof
+*.gz
+*.synctex(busy)
+*.out
+/main.lot
+*.fdb_latexmk
+*.fls
