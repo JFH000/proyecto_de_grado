@@ -7,8 +7,16 @@
 \usepackage{mathtools}
 \usepackage{bm}
 \usepackage{siunitx}
-\sisetup{group-separator={,}, group-minimum-digits=4, per-mode=symbol, detect-all}
+\sisetup{group-separator={,}, group-minimum-digits=5, per-mode=symbol, detect-all}
+\usepackage{makecell}
 \usetikzlibrary{positioning, arrows.meta, fit, backgrounds, calc, shapes.geometric, decorations.pathreplacing}
+
+\makeatletter
+\newcommand{\tablerows}[1]{\@@input #1 }
+\makeatother
+\renewcommand{\topfraction}{0.85}
+\renewcommand{\textfraction}{0.1}
+\renewcommand{\floatpagefraction}{0.8}
 
 \newcommand{\E}{\mathbb{E}}
 \newcommand{\R}{\mathbb{R}}
