@@ -1,16 +1,346 @@
 \chapter{Related work}
+\label{chap:related-work}
+
+This thesis builds on four lines of work. The first applies \ac{RL} to the choice of channel and
+transmit power for \ac{V2V} links. The second studies how several \ac{RL} agents can learn together,
+usually through a server. The third removes the server and lets each node combine
+what it learns only with its neighbors. The fourth asks which reward each agent of a team should learn
+from. Figure~\ref{fig:rw-map} shows the four lines and what this thesis takes from each.
+
+The chapter reviews the four lines in that order. For each one, it states the problem the line
+addresses, what the key papers did, and what is still missing for this thesis.
+Section~\ref{sec:rw-positioning} then compares the thesis with the closest works.
+
+\begin{figure}[tbp]
+  \centering
+  \begin{tikzpicture}[
+      font=\linespread{1.15}\small,
+      area/.style={draw=black!45, fill=black!4, rounded corners=2pt, align=left,
+                   text width=7.3cm, inner sep=5pt},
+      thesis/.style={draw=black!80, thick, fill=black!10, rounded corners=2pt, align=center,
+                     text width=3.3cm, inner sep=6pt},
+      feed/.style={-{Stealth[length=2mm]}, semithick, draw=black!60}]
+    \node[area] (v2v) {\textbf{\ref{sec:rw-v2v}\enspace \acs{RL} for \acs{V2V} resource allocation}\\
+      \emph{Takes:} the problem, the agent design, and the baseline scheme of
+      \citet{li+22fedmarl}};
+    \node[area, below=2.5mm of v2v] (frl) {\textbf{\ref{sec:rw-frl}\enspace Federated and multi-agent
+      \acs{RL}}\\
+      \emph{Takes:} agents that learn together by sharing their network weights};
+    \node[area, below=2.5mm of frl] (dfl) {\textbf{\ref{sec:rw-dfl}\enspace Serverless decentralized
+      learning}\\
+      \emph{Takes:} gossip averaging among neighbors, with no server};
+    \node[area, below=2.5mm of dfl] (rew) {\textbf{\ref{sec:rw-reward}\enspace Reward design in
+      multi-agent systems}\\
+      \emph{Takes:} a reward that judges each agent mainly by its own actions};
+    \coordinate (mid) at ($(frl.east)!0.5!(dfl.east)$);
+    \node[thesis, right=0.8cm of mid] (t) {\textbf{This thesis}\\[3pt]
+      \acs{D3QN} agents choose channel and power for \acs{V2V} links, average their networks
+      only with nearby vehicles, and learn from individual rewards};
+    \draw[feed] (v2v.east) -- ($(t.west)+(0,0.45)$);
+    \draw[feed] (frl.east) -- ($(t.west)+(0,0.15)$);
+    \draw[feed] (dfl.east) -- ($(t.west)+(0,-0.15)$);
+    \draw[feed] (rew.east) -- ($(t.west)+(0,-0.45)$);
+  \end{tikzpicture}
+  \caption[The four lines of related work]{The four lines of work reviewed in this chapter, numbered by
+    section, and what this thesis takes from each.}
+  \label{fig:rw-map}
+\end{figure}
 
 \section{Reinforcement learning for V2V resource allocation}
 % Trabajos que asignan canal y potencia a enlaces V2V con aprendizaje por refuerzo en lugar de optimización centralizada: Ye et al. (2019), Liang et al. (2019) y Li et al. (2022).
+\label{sec:rw-v2v}
+
+\ac{V2V} links can reuse the channels that the cellular network has already assigned to its users, the
+\acp{CUE} (Section~\ref{sec:bg-v2v}). Each \ac{V2V} pair must then choose a channel and a transmit
+power. The choice must deliver its own safety messages on time without degrading the cellular links that
+share the channel.
+
+Classical solutions treat this as an optimization problem solved at a central point. They need the
+instantaneous state of every channel, which is hard to track when vehicles move fast and costly to report
+to the \ac{BS}. They are also myopic: they optimize the current decision, not long-term performance
+\cite{li+22fedmarl}. For these reasons, a recent line of work learns the allocation with \ac{RL}
+instead.
+
+\citet{ye+19drl} proposed a decentralized scheme based on deep \ac{RL}. Each \ac{V2V} link is an agent
+that picks its sub-band and transmit power from local information, without waiting for global channel
+information. The goal is to meet the latency constraints of \ac{V2V} messages while limiting the
+interference on the vehicle-to-infrastructure links. Decisions are local, but \citet{li+22fedmarl} point
+out that schemes of this kind still train on data collected from all vehicles in one place, which costs
+communication and raises privacy concerns.
+
+\citet{liang+19spectrum} treated the same spectrum-sharing problem as a multi-agent one. Each \ac{V2V}
+link is an agent with its own \ac{DQN}. All agents receive the same reward, which combines the sum
+capacity of the vehicle-to-infrastructure links with the delivery of \ac{V2V} payloads. The authors chose
+a common reward on purpose: it turns a problem in which links compete for spectrum into a fully
+cooperative one. Learning is centralized and execution is distributed: while training, every agent has
+access to this system-wide reward; once trained, each agent acts on its local observation only. This is a
+form of \ac{CTDE} \cite{amato24cooperative}. To reduce the non-stationarity caused by agents that learn at
+the same time, they added a ``fingerprint'' to each observation: the training iteration and the
+exploration rate. Their agents improved both the capacity of the infrastructure links and the delivery
+rate of \ac{V2V} payloads.
+
+\citet{li+22fedmarl}, the work this thesis starts from, proposed a federated multi-agent deep \ac{RL}
+scheme. Each \ac{V2V} pair is a \ac{D3QN} agent trained with \ac{PER} (Section~\ref{sec:bg-drl}). It
+observes the gain of its own link on each channel, the gains from the \acp{CUE} to the \ac{BS}, how many
+neighboring pairs used each channel in the previous slot, and the length of its queue. Neighbors are the
+pairs within \SI{300}{\meter}, the maximum communication range of the \ac{3GPP} evaluation scenario
+\cite{3gpp16v2x}. The agent then chooses a channel and a power level. Learning has two central
+elements:
+\begin{itemize}[nosep]
+  \item \emph{A global reward.} The \ac{BS} computes a single reward at the end of each slot and
+    broadcasts it to all agents.
+  \item \emph{Model averaging at the \ac{BS}.} Periodically, the \ac{BS} collects the networks of all
+    agents, averages them with \ac{FedAvg} \cite{mcmahan+17fedavg}, and sends the average back. The
+    authors argue that this gives each agent implicit knowledge of the parts of the network it cannot
+    observe.
+\end{itemize}
+They compared their scheme with a greedy rule, a cluster-based method, and a scheme in which a single
+agent learns and the others copy its model. Their scheme achieved a higher \ac{CUE} sum rate, a higher
+\ac{V2V} packet delivery rate, and a shorter average \ac{V2V} transmission delay than the greedy and
+cluster-based methods, and it converged faster and to a higher reward than the single-agent scheme.
+
+\paragraph{What is missing.} In all three works the vehicles decide on their own, but they do not learn
+on their own. Learning goes through a central element: training on data collected from all vehicles in
+\citet{ye+19drl}, centralized training with a system-wide reward in \citet{liang+19spectrum}, and a
+\ac{BS} that computes the reward and averages the models in \citet{li+22fedmarl}. None of them asks whether vehicles could learn together without the \ac{BS}, or
+whether a common reward is the best signal to learn from. \citet{li+22fedmarl} also analyze the
+computational complexity of \ac{FedAvg}, but not the traffic it places on the \ac{BS}.
 
 \section{Federated and multi-agent reinforcement learning}
 % Revisiones y aplicaciones de FRL y MARL federado: Qi et al. (2021), Xu et al. (2022), Myakala y Kamatala (2023) y Cheruiyot et al. (2025).
+\label{sec:rw-frl}
+
+When several agents face related tasks, each one sees only part of the possible experience. The question
+this line of work addresses is how the agents can learn from each other's experience. The idea is old:
+\citet{tan93independent} found that agents that share their learned policies or their experience episodes
+learn faster than independent agents, at the cost of communication. \Ac{FRL} recasts this sharing in the
+terms of \ac{FL} (Section~\ref{sec:bg-fl}): agents keep their raw experience and exchange only model
+parameters or gradients.
+
+\citet{qi+21frl} reviewed \ac{FRL} and split it into two variants according to how the environment is
+divided among agents:
+\begin{itemize}[nosep]
+  \item \emph{Horizontal \ac{FRL}.} Each agent interacts with its own, independent copy of the
+    environment, and all agents have the same state and action spaces. They exchange parameters or
+    gradients, either through a server or peer to peer, to learn faster from more experience.
+  \item \emph{Vertical \ac{FRL}.} All agents act in one shared environment. Each one observes only part
+    of the state, and the actions of all of them affect the dynamics and the rewards.
+\end{itemize}
+Among the application areas they review are communications and edge computing, and they use autonomous
+driving as a typical example of horizontal \ac{FRL}.
+
+The \ac{V2V} scheme of \citet{li+22fedmarl} does not fit neatly into either variant. Its agents have the
+same observation and action spaces and exchange model parameters, as in horizontal \ac{FRL}. But they act
+in one shared environment and interfere with each other, as in vertical \ac{FRL}. The models being
+averaged therefore come from agents whose experiences are coupled, not independent.
+
+Federation has also been applied to multi-agent problems in other domains. \citet{xu+22mafrl} used
+multi-agent \ac{FRL} to design an incentive mechanism that rewards devices for contributing data and
+computing resources to \ac{FL} in cyber-physical systems. They argued that a single learning agent converges poorly there, because the
+heterogeneity of the devices makes the environment non-stationary. Their agents learn the allocation
+policies jointly without sharing private information.
+
+Two recent surveys address the tension between federation and decentralization directly.
+\citet{cheruiyot+25marlsurvey} distinguish three regimes of \ac{MARL}. In \ac{FRL}, a central server
+relays the communication and averages the parameters of the agents. In decentralized \ac{MARL},
+there is no server: agents exchange parameters peer to peer over a communication graph, which
+the survey also calls a gossip network, and they may maximize common or individual rewards. In
+noncooperative \ac{MARL}, each agent has its own reward and the agents play a game.
+\citet{myakala+23scalable} review scalable, decentralized multi-agent \ac{FRL}. They name communication
+efficiency, decentralized aggregation, and non-stationarity as the main challenges of scaling \ac{FRL} to
+many agents, and review remedies such as selective communication, compression, and peer-to-peer
+aggregation.
+
+\paragraph{What is missing.} The surveys describe a serverless regime and name decentralized aggregation
+and communication efficiency as open challenges. In \ac{V2V} resource allocation, however, the federated
+scheme of reference uses a central aggregator \cite{li+22fedmarl}. To our knowledge, the serverless regime
+has not been tried in this problem.
 
 \section{Serverless decentralized learning}
 % Consenso y gossip (Boyd et al., 2006; Olfati-Saber et al., 2007), gossip learning (Hegedus et al., 2019), D-PSGD (Lian et al., 2017), MARL con agentes en red (Zhang et al., 2018) y DFL con vecinos limitados (Ge et al., 2024).
+\label{sec:rw-dfl}
+
+\Ac{FL} avoids pooling raw data, but it keeps a server that collects and averages every model. All the
+traffic of learning passes through that server. Decentralized learning removes it: each node exchanges
+information only with its neighbors in a communication graph (Section~\ref{sec:bg-dfl}). The question is
+whether such local exchanges can reach the same result as a central average, and how fast.
+
+\paragraph{Consensus and gossip.} The theoretical basis is the study of consensus and gossip algorithms.
+\citet{boyd+06gossip} analyzed randomized gossip: at each step, a randomly chosen node averages its value
+with that of one neighbor. Repeating this drives every node to the network-wide average. They showed that
+the time this takes depends on the structure of the graph, through the second largest eigenvalue of the
+averaging matrix. One of the graphs they studied in detail is the geometric random graph, in which nodes
+are connected when they are close to each other; it models wireless networks.
+\citet{olfatisaber+07consensus} reviewed consensus algorithms for networked multi-agent systems, including
+networks whose topology changes over time.
+
+\paragraph{Training models without a server.} Three works carry this idea from averaging values to
+training models:
+\begin{itemize}
+  \item \citet{lian+17dpsgd} proposed decentralized parallel stochastic gradient descent (D-PSGD). Each
+    node takes gradient steps on its own data and averages its model with those of its neighbors. D-PSGD
+    needs a total amount of computation comparable to the centralized version, while the busiest node
+    communicates much less. On networks with low bandwidth or high latency, it ran up to an order of
+    magnitude faster.
+  \item \citet{hegedus+19gossip} compared gossip learning with \ac{FL}. In gossip learning, each node
+    periodically sends its model to a random peer, which merges it with its own model and updates it on
+    local data. Using a real trace of phones going online and offline, and the same compression for both
+    approaches, they found gossip learning comparable to \ac{FL} overall, and better when the training
+    data were spread evenly across nodes.
+  \item \citet{ge+24dfl} proposed a \ac{DFL} scheme for heterogeneous Internet-of-Things devices. In each
+    round, each device picks a fixed number of neighbors at random and receives their models. Instead of
+    averaging parameters, it runs the neighbors' models on its own data, fuses their outputs, and
+    distills the result into its own model. This lets devices with different model architectures learn
+    from each other. In their experiments, the scheme needed fewer communication rounds than \ac{FedAvg}
+    to reach a target accuracy. More neighbors improved accuracy but raised communication, and five
+    neighbors gave the best balance.
+\end{itemize}
+
+\paragraph{Decentralized multi-agent \acs{RL}.} \citet{zhang+18networked} proposed a fully decentralized
+actor-critic method for networked agents. Each agent receives a private reward that only it knows. Agents
+exchange the parameters of their critics with their neighbors over a network that may change over time,
+and combine them through a consensus step. Together, they maximize the average return of all agents.
+Their convergence guarantees assume a linear approximation of the value function; they also report
+simulations with nonlinear approximation.
+
+\paragraph{What is missing.} Gossip and consensus are well understood for averaging values and for
+training supervised models. In \ac{RL}, the closest work \cite{zhang+18networked} gives guarantees for
+linear critics on an abstract network and does not measure the cost of communication. To our knowledge,
+no work has studied gossip averaging of deep Q-networks among vehicles that compete for the same channels,
+where the neighbor graph follows from the positions of the vehicles and the cost of exchanging models is
+measured.
 
 \section{Reward design in multi-agent systems}
 % Recompensa compartida frente a recompensas por agente: agentes independientes (Tan, 1993; Claus y Boutilier, 1998), recompensas de diferencia (Wolpert y Tumer, 2001), alineación y sensibilidad (Agogino y Tumer, 2008) y VDN (Sunehag et al., 2018).
+\label{sec:rw-reward}
+
+When agents cooperate, the simplest design gives all of them the same reward: a measure of how well the
+whole system did. Its weakness is credit assignment. From a shared reward, an agent cannot tell how much of
+the outcome came from its own action and how much from the actions of the others.
+\citet{gronauer+22marlsurvey} list credit assignment among the central challenges of deep \ac{MARL}.
+
+\paragraph{Independent and cooperative learners.} Early studies compared agents that learn on their own
+with agents that cooperate. \citet{tan93independent} found that, on tasks that require joint action,
+agents that work as partners end up outperforming independent ones, although they learn more slowly at
+first. \citet{claus+98dynamics} compared, in cooperative games, Q-learners that ignore the other agents
+with learners that model joint actions. They showed that both kinds may settle on a suboptimal
+equilibrium, depending on the structure of the game and on how the agents explore.
+
+\paragraph{Rewards that are aligned and learnable.} \citet{wolpert+01collectives} studied how to choose
+the reward of each member of a collective so that members that maximize their own reward also make the
+collective perform well. Giving every member the global reward, the so-called team game, is one option.
+They derived alternatives that are easier for each member to learn and still aligned with the global goal.
+One of them rewards each member with the difference between the global reward and the global reward
+without that member's contribution, and it outperformed the team game in their experiments.
+\citet{agogino+08rewards} made the trade-off explicit with two properties (Section~\ref{sec:bg-marl}):
+\emph{alignment}, whether improving an agent's reward also improves the system's, and
+\emph{learnability}, how sensitive the reward is to the agent's own actions compared with the actions of
+the others. In a multi-rover domain, they showed that:
+\begin{itemize}[nosep]
+  \item the global reward is aligned but hard to learn, because each agent's effect is masked by the
+    others;
+  \item a purely local reward is easy to learn but may not be aligned;
+  \item the difference reward has both properties.
+\end{itemize}
+
+\paragraph{Deep multi-agent \acs{RL}.} \citet{sunehag+18vdn} trained cooperative deep \ac{RL} agents from
+a single team reward and observed two failures: spurious rewards, where an agent is rewarded for what a
+teammate did, and the lazy agent, which stops learning because its exploration would lower the reward a
+teammate already earns. They proposed value-decomposition networks (VDN): the value of the team is
+written as a sum of per-agent values, and all of them are trained together, centrally, from the team
+reward.
+
+\paragraph{The reward in V2V resource allocation.} Both \citet{liang+19spectrum} and
+\citet{li+22fedmarl} give all agents a common reward, and both justify it in the same way: the links
+compete for channels, so with separate rewards they would act selfishly, and a common reward turns the
+problem into a cooperative one. In the terms above, the price is learnability. The reward of
+\citet{li+22fedmarl} adds one term per \ac{CUE} and two per \ac{V2V} pair, and each agent's action moves
+only a few of them. The remedies above do not fit a serverless setting easily.
+The difference reward needs the performance of the system with and without each agent, and VDN trains all
+agents together from the team reward. Both need a central view of the system.
+
+\paragraph{What is missing.} To our knowledge, no work has tested in \ac{V2V} resource allocation whether
+an individual reward, which judges each agent mainly by its own actions, works better than the common one.
+Nor has any work studied how such a reward interacts with model averaging among the agents.
 
 \section{Positioning of this thesis}
 % Tabla que compara los trabajos más cercanos (qué se comparte, quién agrega, de qué recompensa aprende cada agente y si se mide la comunicación) y qué combina esta tesis que no aparece junto en ellos.
+\label{sec:rw-positioning}
+
+Table~\ref{tab:rw-positioning} compares the closest works along four questions: what the agents share
+while they learn, who combines what is shared, what reward each agent learns from, and whether the cost of
+communication is measured.
+
+\begin{table}[tbp]
+  \centering
+  \linespread{1.15}\small
+  \caption[Comparison with the closest works]{Comparison of this thesis with the closest works. The last
+    column says whether the work measures the cost of communication. A dash (---) means that the aspect
+    does not apply.}
+  \label{tab:rw-positioning}
+  \begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{2.1cm}
+      >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X
+      >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}p{1.6cm}@{}}
+    \toprule
+    Work & What agents share while learning & Who combines it & Reward each agent learns from
+      & Comm.\ cost measured? \\
+    \midrule
+    \citet{liang+19spectrum} & Nothing; each agent trains its own \acs{DQN} & --- & Common to all
+      & No \\
+    \addlinespace
+    \citet{li+22fedmarl} & \acs{D3QN} weights & The \acs{BS}, with \acs{FedAvg} & Common to all,
+      computed by the \acs{BS} & No \\
+    \addlinespace
+    \citet{zhang+18networked} & Critic parameters & Each agent, with its neighbors (consensus)
+      & Private to each agent & No \\
+    \addlinespace
+    \citet{lian+17dpsgd} & Weights of a supervised model & Each node, with its neighbors & --- & Yes \\
+    \addlinespace
+    \citet{hegedus+19gossip} & Weights of a supervised model & Each node, with one random peer at a
+      time & --- & Yes \\
+    \addlinespace
+    \citet{ge+24dfl} & Supervised models, combined by distillation & Each device, with $S$ random
+      neighbors & --- & Yes \\
+    \midrule
+    This thesis & \acs{D3QN} weights & Each vehicle, with its neighbors within \SI{300}{\meter} (all,
+      or $S$ at random) & Individual, compared with the common one & Yes \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+The table shows the gap. The \ac{V2V} works learn through a central element and give every agent the same
+reward. The decentralized works combine models among neighbors, but they either train supervised models
+or, in \ac{RL}, give guarantees only for linear critics on an abstract network and do not measure
+communication. No work brings
+together the three elements of this thesis: multi-agent \ac{RL} for \ac{V2V} resource allocation, model
+averaging among neighbors without the \ac{BS}, and an individual reward per agent.
+
+Against each of the closest works, the thesis differs as follows:
+\begin{itemize}
+  \item Compared with \citet{li+22fedmarl}, the thesis keeps the problem, the agents, and their
+    observations and actions. It makes two changes: it removes the \ac{BS} from model averaging, and it
+    replaces the common reward with an individual one. Because everything else stays the same, differences
+    in the results can be attributed to these two changes. The gossip neighbors are the same
+    \SI{300}{\meter} neighbors that the agents already use in their observation. Unlike them, the thesis
+    also counts the model transfers that each form of aggregation needs and how they are spread across
+    nodes.
+  \item Compared with \citet{zhang+18networked}, the thesis shares the combination of private rewards and
+    consensus among neighbors. It differs in four ways: it uses deep Q-networks, outside the linear
+    setting of their analysis; it works on a concrete communications problem; it derives the neighbor
+    graph from the positions of the vehicles; and it measures the cost of communication empirically. In
+    exchange, it offers no convergence guarantees.
+  \item From \citet{ge+24dfl}, the thesis borrows the idea of capping at $S$ the number of neighbors each
+    node combines with per round. Unlike them, it averages parameters instead of distilling outputs, since
+    all agents share one architecture, and its nodes are \ac{RL} agents.
+  \item With \citet{lian+17dpsgd} and \citet{hegedus+19gossip}, the thesis shares the idea of averaging
+    models between peers. Here, however, the data come not from a fixed dataset but from agents that share
+    one environment and interfere with each other.
+\end{itemize}
+
+\begin{keyidea}
+  Previous work on \ac{V2V} resource allocation learns through a central element, such as a \ac{BS} that
+  averages the models or computes the reward, and gives every agent the same reward. Serverless averaging
+  and per-agent rewards are well studied, but separately and outside this problem. This thesis brings both
+  to \ac{V2V} resource allocation: vehicles average their networks only with nearby vehicles, each one
+  learns from its own reward, and the cost of communication is measured.
+\end{keyidea}

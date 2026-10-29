@@ -1,103 +1,655 @@
 \chapter{Background}
+\label{chap:background}
 
+This chapter builds, from scratch, the ideas on which the rest of the thesis rests. It assumes no prior
+knowledge of wireless communications or machine learning. Section~\ref{sec:bg-v2v} presents the minimum of
+wireless communications needed to understand the system model: what interference is, how the quality of a
+signal is measured, and how a queue of data relates to delay. Section~\ref{sec:bg-rl} explains how an agent
+learns by trial and error, and Section~\ref{sec:bg-drl} shows how that learning is combined with neural
+networks. Section~\ref{sec:bg-marl} moves from one learning agent to many and presents the difficulties this
+brings. The last two sections present federated learning, first with a central server
+(Section~\ref{sec:bg-fl}) and then without one (Section~\ref{sec:bg-dfl}).
+
+Two reading aids appear throughout the chapter. After each equation, a list explains every symbol in it. At
+the end of each main section, a box labeled \emph{Key idea} summarizes the section in a few sentences.
+
+%%
 \section{Vehicular communications and spectrum reuse}
 % Lo necesario de comunicaciones inalámbricas para entender el modelo: interferencia, calidad de una señal y relación entre cola y retardo.
+\label{sec:bg-v2v}
 
 \subsection{Vehicle-to-vehicle links and the cellular network}
 % Qué son V2X y V2V, qué es un par V2V, qué mensajes lleva y cómo reutiliza los canales de subida de los CUE a costa de interferirlos.
 
+\termdef[vehicular communications]{Vehicular communications} (\ac{V2X}) cover every way in which a vehicle
+exchanges information. This thesis focuses on \ac{V2V} links, in which a vehicle sends data directly to a
+nearby vehicle; each transmitter--receiver couple is a \termdef{V2V pair}. These links carry periodic safety
+messages, for which timeliness matters most: the \ac{3GPP} sets their maximum latency at
+\SI{100}{\milli\second} \cite{3gpp16v2x}.
+
+A cellular network divides its spectrum into \termdef[channel]{channels}. In the \termdef{uplink}, each
+\ac{CUE}, such as a phone, transmits to the \ac{BS} on its own channel. To avoid needing spectrum of their
+own, \ac{V2V} pairs can reuse these uplink channels \cite{liang+19spectrum,li+22fedmarl}. The price is
+\termdef{interference} (Figure~\ref{fig:bg-reuse}): the pair disturbs the \ac{CUE} at the \ac{BS}, the
+\ac{CUE} disturbs the receiver of the pair, and pairs on the same channel disturb each other.
+
+\begin{figure}[tbp]
+  \centering
+  \begin{tikzpicture}[execute at begin picture={\linespread{1}\selectfont},
+      dev/.style={draw, thick, minimum width=1.9cm, minimum height=0.85cm, rounded corners=2pt,
+        align=center, font=\small, fill=gray!12},
+      useful/.style={-{Stealth[length=2.5mm]}, very thick},
+      interf/.style={-{Stealth[length=2.5mm]}, thick, dashed}]
+    \node[draw, thick, isosceles triangle, isosceles triangle apex angle=40, shape border rotate=90,
+      minimum height=1.1cm, fill=gray!35] (bs) at (0,0) {};
+    \node[above=0.5mm of bs, font=\small] {\acs{BS}};
+    \node[dev] (cue) at (-3.5,-2.8) {\acs{CUE} $m$};
+    \node[dev] (tx) at (3.3,-2.0) {Transmitter\\of pair $k$};
+    \node[dev] (rx) at (3.3,-4.6) {Receiver\\of pair $k$};
+    \draw[useful] (cue) -- node[above left, font=\footnotesize, align=right]
+      {useful signal\\of the \acs{CUE}} (bs);
+    \draw[useful] (tx) -- node[right, font=\footnotesize, align=left] {useful\\\acs{V2V} signal} (rx);
+    \draw[interf] (tx) -- node[above right, font=\footnotesize, align=left]
+      {interferes with\\the \acs{CUE}} (bs);
+    \draw[interf] (cue) -- node[below left, font=\footnotesize, align=right, pos=0.55]
+      {interferes with\\the \acs{V2V} pair} (rx);
+  \end{tikzpicture}
+  \caption[A V2V pair reusing a cellular channel]{A \acs{V2V} pair reusing the uplink channel of a
+    \acs{CUE}. Solid arrows are the useful signals. Dashed arrows are the interference that appears because
+    the pair and the \acs{CUE} transmit on the same channel.}
+  \label{fig:bg-reuse}
+\end{figure}
+
+More power helps a pair's own link but hurts the others on its channel. Each pair must therefore choose a
+channel and a transmit power that balance these effects; that is the decision the agents of this thesis
+learn to make.
+
 \subsection{Power and decibels}
 % Escala logarítmica: razones de potencia en dB y potencias absolutas en dBm, con ejemplos de conversión.
+
+Radio powers span many orders of magnitude, so they are written on a logarithmic scale. A power ratio $x$
+in \termdef[decibel]{decibels} (dB) is $10 \log_{10} x$: multiplying a power by 10 adds \SI{10}{dB}, and
+halving it subtracts about \SI{3}{dB}. An absolute power is written in \termdef{dBm}, decibels relative to
+\SI{1}{\milli\watt}; the maximum transmit power in this thesis, \SI{23}{dBm}, is about
+\SI{200}{\milli\watt}. In decibels, products become sums: a signal sent at \SI{23}{dBm} that loses
+\SI{91}{dB} on its way arrives at $23 - 91 = \SI{-68}{dBm}$.
 
 \subsection{Channel gain: distance and fading}
 % La ganancia h = alpha * g: pérdida por distancia (gran escala) y desvanecimiento rápido (pequeña escala).
 
+The \termdef{channel gain} $h$ is the fraction of the transmitted power that reaches the receiver: if a
+transmitter sends with power $P$, the receiver gets $P\,h$. As in \citet{li+22fedmarl}, it has two factors:
+\begin{equation}
+  h = \alpha \, g, \qquad \alpha = \varphi \, d^{-e} \label{eq:bg-gain}
+\end{equation}
+\begin{wherelist}
+  \item $\alpha$ is the \termdef{large-scale fading}, which falls with the distance $d$ (in meters);
+    $\varphi$ is a constant and $e$ is the \termdef{path-loss exponent};
+  \item $g$ is the \termdef{small-scale fading}, a random factor with mean 1 (exponentially distributed)
+    that changes from one millisecond to the next because the signal reflects off its surroundings.
+\end{wherelist}
+With the values of this thesis ($\varphi = \SI{-68.5}{dB}$, $e = 1.61$), a receiver at \SI{25}{\meter} gets
+about \SI{-91}{dB} of the transmitted power, and one at \SI{300}{\meter} about \SI{-108}{dB}. The small-scale
+fading does not change this average; it makes the received power fluctuate around it.
+
 \subsection{Signal-to-interference-plus-noise ratio}
 % Definición de la SINR, potencia del ruido térmico e interferencia de otros transmisores en el mismo canal.
+
+A receiver can decode a signal if it stands out above the interference and the \termdef{noise}, a random
+thermal disturbance present in every receiver. This is measured by the \ac{SINR}:
+\begin{equation}
+  \mathrm{SINR} = \frac{P\,h}{\sigma^2 + I} \label{eq:bg-sinr}
+\end{equation}
+\begin{wherelist}
+  \item $P\,h$ is the useful received power;
+  \item $\sigma^2$ is the noise power, \SI{-114}{dBm} for the \SI{1}{\mega\hertz} channels of this thesis
+    (a density of \SI{-174}{dBm/Hz} times the bandwidth);
+  \item $I$ is the sum of the powers received from the other transmitters on the same channel.
+\end{wherelist}
+Powers are added in milliwatts, not in dBm. For example, a pair \SI{25}{\meter} apart that transmits at
+\SI{23}{dBm} receives \SI{-68}{dBm}; a \ac{CUE} on the same channel, \SI{250}{\meter} away, adds about
+\SI{-84}{dBm} of interference. The \ac{SINR} is then about \SI{16}{dB}, against \SI{46}{dB} with noise alone:
+in these links, interference, not noise, is the limit.
 
 \subsection{Channel capacity}
 % Fórmula de Shannon, R = W log2(1 + SINR), y cómo crece la tasa con la SINR.
 
+The \ac{SINR} sets how many bits per second a channel can carry. \citet{shannon48communication} showed that
+the highest error-free rate over a channel of bandwidth $W$ is
+\begin{equation}
+  R = W \log_2\bigl(1 + \mathrm{SINR}\bigr) \label{eq:bg-shannon}
+\end{equation}
+\begin{wherelist}
+  \item $R$ is the rate in bits per second and $W$ the bandwidth in hertz;
+  \item the \ac{SINR} of Equation~\eqref{eq:bg-sinr} enters as a plain ratio, not in decibels.
+\end{wherelist}
+The rate grows only logarithmically with the \ac{SINR}. In the example above, the interference of a single
+\ac{CUE} cuts the rate of the pair from about \SI{15.3}{Mbps} to \SI{5.4}{Mbps}. As in
+\citet{li+22fedmarl}, this thesis computes the rate of every link with Equation~\eqref{eq:bg-shannon}.
+
 \subsection{Queues, delay, and Little's law}
 % Cómo crece y se vacía una cola según la tasa de llegada y la de transmisión, y la ley de Little, que relaciona el tamaño de la cola con el retardo.
 
+A \ac{V2V} transmitter stores the data it generates in a \termdef{queue} and sends them as fast as the
+channel allows. If data arrive at rate $\lambda$ and the link transmits at rate $R$, the queue grows while
+$R < \lambda$; a pair that stays silent ($R = 0$) only accumulates data. \termdef{Little's law}
+\cite{little61queuing} links the queue to the delay:
+\begin{equation}
+  Q = \lambda \, D \label{eq:bg-little}
+\end{equation}
+\begin{wherelist}
+  \item $Q$ is the average amount of data in the queue, in bits;
+  \item $\lambda$ is the arrival rate, in bits per second;
+  \item $D$ is the average time a bit waits in the queue, in seconds.
+\end{wherelist}
+Bounding the delay is therefore the same as bounding the queue. With data arriving at \SI{1}{Mbps} and a
+\SI{100}{\milli\second} limit, the queue may not exceed \num{100000} bits, which a silent pair reaches after
+\SI{100}{\milli\second}.
+
+\begin{keyidea}
+  When a pair of vehicles reuses the channel of a cellular user, the two disturb each other. The quality of
+  each signal is measured by its \acs{SINR}, and the data rate depends on it
+  (Equation~\eqref{eq:bg-shannon}). Staying silent protects the others, but it fills the queue of the silent
+  pair, and a full queue means delay (Equation~\eqref{eq:bg-little}).
+\end{keyidea}
+
+%%
 \section{Reinforcement learning}
 % Cómo aprende un agente por refuerzo, desde la interacción con el entorno hasta Q-learning.
+\label{sec:bg-rl}
 
-\subsection{Agent, environment, and reward}
-% El ciclo estado, acción, recompensa y nuevo estado, y qué es una política.
+This section explains how a single agent learns to make decisions by trial and error.
 
-\subsection{Return and discount factor}
-% El retorno como suma descontada de recompensas y el papel del factor de descuento gamma.
+\subsection{Agent, environment, and return}
+% El ciclo estado, acción y recompensa, la política, el retorno con el factor de descuento gamma y, en una frase, el MDP.
 
-\subsection{Markov decision processes}
-% Los cinco elementos de un MDP y la propiedad de Markov.
+In \ac{RL}, an \termdef{agent} learns to make decisions by interacting with an \termdef{environment}
+\cite{sutton+18rl}. At each time step $t$, the agent observes the \termdef{state} $s^t$, chooses an
+\termdef{action} $a^t$, and receives a \termdef{reward} $r^t$, a number that says how good the action was;
+the environment then moves to a new state $s^{t+1}$ (Figure~\ref{fig:bg-rl-loop}). The rule that maps
+states to actions is the \termdef{policy} of the agent, $\pi$. Nobody tells the agent which action is
+correct: it must find out by trying. In this thesis, each agent is a \ac{V2V} pair that observes its
+channels and its queue and chooses a channel and a transmit power.
 
-\subsection{Value functions and the Bellman equation}
-% La función Q de una política, la función Q óptima y la ecuación de Bellman.
+\begin{figure}[htbp]
+  \centering
+  \begin{tikzpicture}[execute at begin picture={\linespread{1}\selectfont},
+      box/.style={draw, thick, rounded corners=3pt, minimum width=3.4cm, minimum height=1.1cm,
+        align=center},
+      arr/.style={-{Stealth[length=2.5mm]}, thick}]
+    \node[box, fill=gray!10] (agent) {Agent\\[-1pt]{\footnotesize policy $\pi$}};
+    \node[box, fill=gray!30, below=1.5cm of agent] (env) {Environment};
+    \draw[arr] (agent.east) -- ++(1.8,0) |- node[pos=0.25, right, font=\small] {action $a^t$}
+      (env.east);
+    \draw[arr] (env.west) -- ++(-1.8,0) |- node[pos=0.25, left, font=\small, align=right]
+      {new state $s^{t+1}$\\reward $r^{t}$} (agent.west);
+  \end{tikzpicture}
+  \caption[The reinforcement learning loop]{The reinforcement learning loop. The agent acts, the
+    environment answers with a new state and a reward, and the agent uses that experience to improve its
+    policy.}
+  \label{fig:bg-rl-loop}
+\end{figure}
 
-\subsection{Q-learning}
-% La regla de actualización de Q-learning y el error de diferencia temporal (TD).
+The agent does not seek the best immediate reward, but the best discounted sum of rewards, called the
+\termdef{return}:
+\begin{equation}
+  G^t = \sum_{j=0}^{\infty} \gamma^{j}\, r^{t+j} \label{eq:bg-return}
+\end{equation}
+\begin{wherelist}
+  \item $r^{t+j}$ is the reward received $j$ steps after step $t$;
+  \item $\gamma \in [0, 1)$ is the \termdef{discount factor}, which gives less weight to later rewards.
+\end{wherelist}
+The discount factor sets how far ahead the agent looks: roughly $1/(1-\gamma)$ steps, that is, about 100
+steps with $\gamma = 0.99$ and about 10 with $\gamma = 0.9$. This choice will matter in the results.
+Formally, this setting is an \ac{MDP}: the next state and the reward depend only on the current state and
+action, not on the earlier history.
 
-\subsection{Exploration versus exploitation}
-% La política epsilon-greedy y cómo se reduce epsilon durante el entrenamiento.
+\subsection{Q-learning and exploration}
+% La función Q, la ecuación de Bellman, la regla de Q-learning con el error TD y la exploración epsilon-greedy.
 
+To decide, the agent needs to know how much each action is worth. The \termdef{Q function}, $Q(s, a)$, is
+the expected return of taking action $a$ in state $s$ and acting well afterwards. Its optimal value
+satisfies the \termdef{Bellman equation}: the value of an action is the reward it gives now plus the
+discounted value of the best action in the next state. An agent that knew this function would simply
+pick, in each state, the action with the largest value.
+
+The \termdef{Q-learning} algorithm \cite{watkins+92qlearning} estimates the Q function from experience.
+After each step, it moves its estimate a little toward what the Bellman equation says:
+\begin{equation}
+  Q(s^t, a^t) \leftarrow Q(s^t, a^t) + \eta\,\underbrace{\Bigl[\, r^t + \gamma \max_{a'} Q(s^{t+1}, a')
+    - Q(s^t, a^t) \Bigr]}_{\text{temporal-difference error } \delta^t}
+  \label{eq:bg-qlearning}
+\end{equation}
+\begin{wherelist}
+  \item $r^t + \gamma \max_{a'} Q(s^{t+1}, a')$ is the \termdef{target}: what the experience of this step
+    suggests the value should be;
+  \item $\delta^t$ is the \termdef{temporal-difference error} (\acs{TD} error), the gap between the target
+    and the current estimate;
+  \item $\eta \in (0, 1]$ is the \termdef{learning rate}.
+\end{wherelist}
+
+To discover which actions are good, the agent must also try actions it does not yet believe are the best.
+The usual rule is the \termdef[epsilon-greedy policy]{$\varepsilon$-greedy} policy: with probability
+$\varepsilon$, the agent picks a random action, and otherwise the one with the highest estimated value.
+Training starts with $\varepsilon = 1$ and lowers it gradually to a small floor.
+
+\begin{keyidea}
+  A reinforcement learning agent learns by trial and error to maximize the discounted sum of its rewards.
+  The Q function says how much each action is worth in each state, and Q-learning estimates it by nudging
+  it, step by step, toward the Bellman equation. The discount factor $\gamma$ sets how far ahead the agent
+  looks.
+\end{keyidea}
+
+%%
 \section{Deep reinforcement learning}
 % Cómo se combina el aprendizaje por refuerzo con redes neuronales y las mejoras que forman el agente D3QN.
+\label{sec:bg-drl}
 
-\subsection{Neural networks as function approximators}
-% Por qué no sirve una tabla cuando el estado es continuo y cómo una red neuronal con pesos theta aproxima la función Q.
+Q-learning stores one number per state--action pair, which is impossible when the state is made of real
+numbers, such as channel gains. This section shows how a neural network replaces the table, and which
+improvements turn this idea into the \ac{D3QN} agent that each \ac{V2V} pair uses.
 
 \subsection{Deep Q-networks}
-% La pérdida de la DQN, el buffer de repetición de experiencia y la red objetivo Mnih et al.
+% Una red neuronal con pesos theta reemplaza la tabla de Q-learning; la pérdida de la DQN, el buffer de repetición y la red objetivo (Mnih et al.).
+\label{sec:bg-dqn}
 
-\subsection{Double DQN}
-% Por qué el máximo sobrestima los valores y cómo la doble DQN separa elegir la acción de evaluarla.
+A \termdef{neural network} is a function with many adjustable parameters, its \termdef{weights}, which we
+collect in a vector $\vtheta$. A network that takes the state as input and returns one estimate per
+action, $Q(s, a; \vtheta)$, can replace the table, and what it learns in one state carries over to similar
+states. Its layers alternate linear maps with a simple nonlinear function (in this thesis, the rectified
+linear unit, $\max(0, x)$). The weights are trained by \termdef{gradient descent}: step by step, they move
+in the direction that most reduces a \termdef{loss function}, computed on a small random sample of the
+data called a \termdef{minibatch}. This thesis uses the Adam optimizer \cite{kingma+15adam}, a variant of
+gradient descent.
 
-\subsection{Dueling architecture}
-% Estimar por separado el valor del estado V(s) y la ventaja A(s, a), y cómo se combinan en Q.
+A \ac{DQN} \cite{mnih+15dqn} trains such a network with the Q-learning target of
+Equation~\eqref{eq:bg-qlearning}:
+\begin{equation}
+  \mathcal{L}(\vtheta) = \E_{(s,a,r,s') \sim \mathcal{B}}\Bigl[ \bigl( y - Q(s, a; \vtheta) \bigr)^2 \Bigr],
+  \qquad y = r + \gamma \max_{a'} Q(s', a'; \vtheta^{-}) \label{eq:bg-dqn}
+\end{equation}
+\begin{wherelist}
+  \item $(s, a, r, s')$ is a \termdef{transition}: a state, the action taken in it, the reward, and the next
+    state;
+  \item $\mathcal{B}$ is the \termdef{replay buffer}, a memory of recent transitions from which minibatches
+    are drawn at random;
+  \item $y$ is the target, and $\vtheta^{-}$ are the weights of the \termdef{target network}, a copy of the
+    \termdef{online network} $\vtheta$ that is refreshed only every $C$ steps.
+\end{wherelist}
+The replay buffer breaks the correlation between consecutive transitions and lets the agent reuse each
+experience; the target network keeps the target from moving with every update (Figure~\ref{fig:bg-dqn}).
+Together, they make training stable \cite{mnih+15dqn}.
 
-\subsection{Prioritized experience replay}
-% Muestrear las transiciones según su error TD, el exponente de prioridad y los pesos de importancia que corrigen el sesgo.
+\begin{figure}[htbp]
+  \centering
+  \begin{tikzpicture}[execute at begin picture={\linespread{1}\selectfont},
+      box/.style={draw, thick, rounded corners=3pt, minimum width=2.8cm, minimum height=1cm, align=center,
+        font=\small},
+      arr/.style={-{Stealth[length=2.2mm]}, thick},
+      lab/.style={font=\footnotesize, align=center}]
+    \node[box, fill=gray!30] (env) at (0,0) {Environment};
+    \node[box, fill=gray!10] (buf) at (8,0) {Replay buffer $\mathcal{B}$};
+    \node[box, fill=white] (online) at (0,-2.6) {Online network\\$\vtheta$};
+    \node[box, fill=gray!10, minimum width=1.6cm] (loss) at (4,-2.6) {Loss\\$\mathcal{L}(\vtheta)$};
+    \node[box, fill=white] (target) at (8,-2.6) {Target network\\$\vtheta^{-}$};
+    \draw[arr] (env) -- node[lab, above] {store transition $(s, a, r, s')$} (buf);
+    \draw[arr] (online) -- node[lab, left] {action $a$\\($\varepsilon$-greedy)} (env);
+    \draw[arr] ([xshift=4mm]buf.south west) -- node[lab, above left] {random\\minibatch} (loss.north);
+    \draw[arr] (online) -- node[lab, above] {$Q(s, a; \vtheta)$} (loss);
+    \draw[arr] (target) -- node[lab, above] {target $y$} (loss);
+    \draw[arr] (loss.south) to[bend left=35] node[lab, below] {gradient step} ([xshift=5mm]online.south);
+    \draw[arr, dashed] ([xshift=-5mm]online.south) -- ++(0,-1.25) -| node[lab, pos=0.25, below]
+      {copy $\vtheta^{-} \leftarrow \vtheta$ every $C$ steps} (target.south);
+  \end{tikzpicture}
+  \caption[Training a deep Q-network]{Training a deep Q-network. The agent stores each transition in the
+    replay buffer and learns from random minibatches drawn from it. The targets come from the target
+    network, a copy of the online network that is refreshed only every $C$ steps.}
+  \label{fig:bg-dqn}
+\end{figure}
 
-\subsection{Huber loss}
-% Pérdida cuadrática para errores pequeños y lineal para errores grandes, para evitar saltos bruscos en los pesos.
+\subsection{The D3QN agent}
+% Las mejoras que forman el agente de cada par: doble DQN, arquitectura de duelo, PER y pérdida de Huber, con una tabla resumen.
 
-\subsection{The D3QN network}
-% Cómo se combinan duelo, doble DQN y PER en el agente que usa cada par V2V.
+The agent of each \ac{V2V} pair, as in \citet{li+22fedmarl}, is a \ac{D3QN}: a \ac{DQN} with the
+improvements below, summarized in Table~\ref{tab:bg-d3qn}.
 
+\paragraph{Double DQN.} The maximum in Equation~\eqref{eq:bg-dqn} overestimates values, because it picks
+precisely the estimates that random errors inflated. \termdef{Double DQN} \cite{vanhasselt+16double} lets
+the online network choose the next action and the target network evaluate it:
+\begin{equation}
+  y = r + \gamma\, Q\Bigl(s',\; \argmax_{a'} Q(s', a'; \vtheta);\; \vtheta^{-}\Bigr) \label{eq:bg-double}
+\end{equation}
+\begin{wherelist}
+  \item $\argmax_{a'} Q(s', a'; \vtheta)$ is the next action chosen by the online network, which the target
+    network then evaluates.
+\end{wherelist}
+
+\paragraph{Dueling architecture.} In many states, all actions are worth about the same, and what matters
+is how good the state itself is. The \termdef{dueling architecture} \cite{wang+16dueling} splits the
+network into two streams, one for the value of the state, $V(s)$, and one for the \termdef{advantage} of
+each action, $A(s, a)$, and combines them:
+\begin{equation}
+  Q(s, a) = V(s) + A(s, a) - \frac{1}{|\mathcal{A}|} \sum_{a' \in \mathcal{A}} A(s, a') \label{eq:bg-dueling}
+\end{equation}
+\begin{wherelist}
+  \item $|\mathcal{A}|$ is the number of actions, so the last term is the average advantage; subtracting it
+    makes the split between $V$ and $A$ unique.
+\end{wherelist}
+Since $V(s)$ is shared by all the actions, every update improves the estimate of all the actions in that
+state.
+
+\paragraph{Prioritized experience replay.} Instead of drawing transitions uniformly, \ac{PER}
+\cite{schaul+16per} draws more often those with large \ac{TD} errors, which are the ones that teach the
+most. Transition $i$ is drawn with probability proportional to $(|\delta_i| + \epsilon_{\mathrm{p}})^{\omega}$,
+where $\delta_i$ is its latest \ac{TD} error, $\epsilon_{\mathrm{p}}$ is a small constant, and $\omega$ sets
+how much the priority matters (the literature calls it $\alpha$, a letter already used here for fading).
+Importance-sampling weights then scale down the effect of the transitions drawn more often, to correct the
+bias this introduces.
+
+\paragraph{Huber loss.} With the squared error of Equation~\eqref{eq:bg-dqn}, a single large error can move
+the weights abruptly. The \termdef{Huber loss} \cite{huber64robust}, which this thesis uses instead, is
+quadratic for errors up to 1 and linear beyond, so the size of each step stays bounded.
+
+\begin{table}[htbp]
+  \centering
+  \caption[The pieces of the D3QN agent]{The pieces of the \acs{D3QN} agent and the problem each one
+    addresses.}
+  \label{tab:bg-d3qn}
+  \begin{tabularx}{\linewidth}{@{}l >{\raggedright\arraybackslash}X@{}}
+    \toprule
+    Piece & Problem it addresses \\
+    \midrule
+    Replay buffer \cite{mnih+15dqn} & Consecutive transitions are correlated, and each experience would be
+      used only once \\
+    Target network \cite{mnih+15dqn} & The target would move with every update of the network \\
+    Double \acs{DQN} \cite{vanhasselt+16double} & The maximum overestimates values \\
+    Dueling architecture \cite{wang+16dueling} & The value of a state would be learned separately for each
+      action \\
+    Prioritized replay \cite{schaul+16per} & Uniform sampling wastes time on well-predicted transitions \\
+    Huber loss \cite{huber64robust} & A single large error can move the weights abruptly \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\begin{keyidea}
+  A \acs{DQN} replaces the table of Q-learning with a neural network. A replay buffer and a target network
+  make its training stable. Double \acs{DQN} corrects overestimation, the dueling architecture separates
+  the value of a state from the value of each action, and prioritized replay trains more on the
+  transitions that teach the most.
+\end{keyidea}
+
+%%
 \section{Multi-agent reinforcement learning}
 % Qué cambia cuando aprenden varios agentes a la vez en el mismo entorno.
+\label{sec:bg-marl}
+
+So far, a single agent has been learning in an environment that does not learn. This section describes
+what changes when several agents learn at the same time in the same environment.
 
 \subsection{From one agent to many}
 % Agentes que comparten un entorno, la acción conjunta y la formalización como Dec-POMDP.
 
+In \ac{MARL}, several agents act in the same environment, and the outcome for each of them depends on what
+all of them do \cite{gronauer+22marlsurvey,nguyen+20madrl}. The \ac{V2V} problem is an example: the
+\ac{SINR} of a pair depends on the channels and powers chosen by every other pair. At each step, each agent
+$k \in \Kset = \{1, \dots, K\}$ chooses its own action $a_k^t$, and the environment responds to the
+\termdef{joint action} $\bm{a}^t = (a_1^t, \dots, a_K^t)$. Each agent sees only part of the state, its
+\termdef{observation} $o_k^t$. When the agents cooperate toward a common reward under these conditions, the
+problem is called a \ac{Dec-POMDP}.
+
 \subsection{Why it is hard}
-% Las cuatro dificultades propias del caso multiagente: observabilidad parcial, no estacionariedad, escalabilidad y asignación de crédito.
+% Las dificultades del caso multiagente, sobre todo la no estacionariedad y la asignación de crédito, y la alineación frente a la facilidad de aprendizaje de la recompensa.
+
+Besides the difficulties of a single agent, the multi-agent case adds partial observability and a number of
+joint actions that grows exponentially with the number of agents: with 10 agents of 60 actions each, there
+are $60^{10} \approx 6 \times 10^{17}$ \cite{gronauer+22marlsurvey,nguyen+20madrl}. Two further
+difficulties matter most for this thesis:
+\begin{description}
+  \item[Non-stationarity.] While one agent learns, the others change how they act. From the point of view
+    of each agent, the environment keeps changing its rules \cite{delafuente+24gametheory}.
+  \item[Credit assignment.] When all the agents receive the same reward, none of them knows how much of it
+    its own action caused. An agent may be rewarded for what another did, or punished for the mistake of
+    another \cite{sunehag+18vdn}.
+\end{description}
+
+Credit assignment can be analyzed through two properties of the reward that each agent receives
+\cite{wolpert+01collectives,agogino+08rewards}. \termdef{Alignment} is the degree to which improving the
+reward of the agent also improves the objective of the system. \termdef{Learnability} is the degree to which
+that reward depends on the actions of the agent rather than on those of the others.
+Table~\ref{tab:bg-rewards} compares three kinds of reward. A \termdef{global reward}, the same for all the
+agents, is aligned but hard to learn, and it gets harder as agents are added. A \termdef{local reward},
+which measures only what concerns each agent, is easy to learn but may be poorly aligned. A
+\termdef{difference reward}, which measures how much the performance of the system changes because the
+agent is there, is designed to have both properties, but it requires evaluating the system without each
+agent. The individual reward that this thesis proposes is a local reward; the proposed architecture
+chapter discusses how much alignment it gives up.
+
+\begin{table}[htbp]
+  \centering
+  \caption[Alignment and learnability of three kinds of reward]{Alignment and learnability of three kinds
+    of reward \cite{wolpert+01collectives,agogino+08rewards}.}
+  \label{tab:bg-rewards}
+  \begin{tabularx}{\linewidth}{@{}l >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X@{}}
+    \toprule
+    Reward & Alignment & Learnability \\
+    \midrule
+    Global & Perfect: it is the objective of the system & Low, and it falls as the number of agents
+      grows \\
+    Local & Can be poor: an agent may improve its reward by harming others & High \\
+    Difference & Aligned by construction & Higher than that of the global reward \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
 
 \subsection{Ways to train multiple agents}
-% Entrenamiento y ejecución centralizados, CTDE y DTE (clasificación de Amato), y dónde encaja el aprendizaje federado.
+% CTDE y DTE (clasificación de Amato), y dónde encaja el aprendizaje federado.
 
+\citet{amato24cooperative} classifies cooperative methods by where training and execution happen. In
+\ac{CTDE}, the agents use information from all of them while they learn, but each one acts only on its own
+observation. In \ac{DTE}, each agent learns and acts on its own. The classic example is
+\termdef{independent learners}, which run their own Q-learning and ignore that the others exist
+\cite{tan93independent,claus+98dynamics}. They are simple and scale well, but they suffer the full effect
+of non-stationarity. Federated learning lies in between: each agent still trains its own network from its
+own experience, as in \ac{DTE}, but the agents periodically share and combine their weights.
+
+\begin{keyidea}
+  With many agents, each one sees only part of the environment, the environment changes while the others
+  learn, and, if all receive the same reward, none knows how much of it its own actions caused. A reward
+  specific to each agent is easier to learn, but it must stay aligned with the common objective.
+\end{keyidea}
+
+%%
 \section{Federated learning}
 % La idea del aprendizaje federado y su aplicación al aprendizaje por refuerzo.
+\label{sec:bg-fl}
+
+This section presents federated learning, a way to train a shared model without moving the data, and its
+application to reinforcement learning agents.
 
 \subsection{The idea and the FedAvg algorithm}
 % Entrenar sin mover los datos: copias locales del modelo, un servidor que promedia y la fórmula de FedAvg (McMahan et al).
 
+In \ac{FL}, a model is trained with data spread across many participants, without the data leaving the
+place where they were generated \cite{mcmahan+17fedavg,kairouz+21advances}. Each participant trains a local copy of the
+model with its own data and sends only the weights to a server. The server combines the weights and sends
+the result back.
+
+The most widely used algorithm, \ac{FedAvg} \cite{mcmahan+17fedavg}, combines the weights with a weighted
+average:
+\begin{equation}
+  \vtheta_{\mathrm{g}} = \sum_{k=1}^{K} \frac{n_k}{n}\, \vtheta_k , \qquad n = \sum_{k=1}^{K} n_k
+  \label{eq:bg-fedavg}
+\end{equation}
+\begin{wherelist}
+  \item $K$ is the number of participants;
+  \item $\vtheta_k$ are the weights of the model of participant $k$ after its local training;
+  \item $n_k$ is the amount of data with which participant $k$ trained, so a participant that trained with
+    more data weighs more; $n$ is the total over all participants;
+  \item $\vtheta_{\mathrm{g}}$ is the \termdef{global model}, which the server sends to every participant
+    so that they continue training from it.
+\end{wherelist}
+
+For example, if two participants trained with $n_1 = 300$ and $n_2 = 100$ samples, the global model is
+$0.75\,\vtheta_1 + 0.25\,\vtheta_2$.
+
+Each repetition of this cycle is called a \termdef{round}. A round has four steps:
+\begin{enumerate}[label=(\arabic*), nosep]
+  \item the server sends the global model to the participants;
+  \item each participant trains its copy with its own data;
+  \item each participant sends its weights to the server;
+  \item the server averages the weights with Equation~\eqref{eq:bg-fedavg}.
+\end{enumerate}
+The left side of Figure~\ref{fig:bg-fedavg-gossip}, in Section~\ref{sec:bg-dfl}, shows the communication
+pattern of a round: every participant talks only with the server.
+
 \subsection{Federated reinforcement learning}
 % Aplicar el promedio federado a agentes de refuerzo; FRL horizontal, que es el caso que uso.
+
+The same idea applied to reinforcement learning agents is called \ac{FRL}. Each agent learns from its own
+experience, and the agents periodically average their networks \cite{qi+21frl}. When all the agents have the same kind
+of states and actions but live different experiences, the setting is called \termdef{horizontal federated
+reinforcement learning}. This is the case of this thesis: all the \ac{V2V} pairs observe the same kind of
+information and choose among the same actions.
+
+Sharing weights gives each agent part of what the others learned in situations it did not live through,
+without sending its data \cite{qi+21frl,li+22fedmarl}. In the multi-agent setting, periodically averaging
+the models also brings the policies of the agents closer to each other, which helps with non-stationarity
+\cite{cheruiyot+25marlsurvey,xu+22mafrl}.
+
+In the scheme of \citet{li+22fedmarl}, on which this thesis builds, the participants are the \ac{V2V} pairs,
+each with its own \ac{D3QN} agent, and the server is the \ac{BS}, which averages the networks of all the
+agents with \ac{FedAvg}.
 
 \subsection{The cost of the central server}
 % El servidor como punto único de falla, cuello de botella de la comunicación y entidad en la que todos deben confiar.
 
+\ac{FedAvg} needs a server that receives and returns every model in every round. With $K$ participants,
+the server receives $K$ models and sends the average back to all $K$, so it takes part in all $2K$
+transfers of the round. This has three costs \cite{kairouz+21advances,ge+24dfl}:
+\begin{itemize}[nosep]
+  \item the server is a single point of failure;
+  \item it becomes the communication bottleneck as the number of participants grows;
+  \item every participant must trust it.
+\end{itemize}
+If the server fails, or a participant loses contact with it, the learning of that participant stops
+benefiting from the others.
+
+\begin{keyidea}
+  In federated learning, each participant trains with its own data and shares only the weights of its
+  model. A central server averages the weights and sends the average back to everyone. The price is
+  depending on that server.
+\end{keyidea}
+
+%%
 \section{Decentralized federated learning and gossip}
 % Cómo aprender sin servidor, intercambiando modelos solo entre vecinos.
+\label{sec:bg-dfl}
+
+This section shows how participants can learn together without a server, by exchanging models only with
+their neighbors.
 
 \subsection{Communication graph}
 % Nodos, aristas, vecinos y grado; grafos geométricos aleatorios como modelo de una red inalámbrica.
 
+In \ac{DFL}, there is no server: the participants exchange models directly with some of the others
+\cite{kairouz+21advances,ge+24dfl}. Who can talk with whom is described by a \termdef{graph}. Each
+participant is a \termdef{node}, and two nodes are joined by an \termdef{edge} if they can communicate. The
+\termdef{neighbors} of a node $k$ are the nodes joined to it. We denote them $\Nset_k$, and their number,
+$|\Nset_k|$, is the \termdef{degree} of the node. A node with no neighbors is \termdef{isolated}. A graph is
+\termdef{connected} if there is a path of edges between any two of its nodes.
+
+In a wireless network, the graph comes from geometry: two nodes are neighbors if they are closer than a
+certain distance. Such a graph is called a \termdef{random geometric graph}, and it is the model of a
+wireless sensor network that \citet{boyd+06gossip} use. In this thesis, two \ac{V2V} pairs are neighbors if
+their transmitters are at most \SI{300}{\meter} apart. Since vehicles move, the graph changes over time. In
+the simulations of this thesis, positions are drawn anew at the start of each episode, so the graph changes
+from one episode to the next.
+
+Figure~\ref{fig:bg-fedavg-gossip} compares the two communication patterns. In \ac{FedAvg}, the graph is a
+star with the server at its center. In decentralized learning, there is no center, and each node talks only
+with its neighbors.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{tikzpicture}[execute at begin picture={\linespread{1}\selectfont},
+      part/.style={draw, thick, circle, minimum size=5mm, inner sep=0pt, fill=gray!25},
+      server/.style={draw, thick, rectangle, rounded corners=1pt, minimum width=11mm, minimum height=6mm,
+        inner sep=1pt, fill=gray!45, font=\footnotesize},
+      link/.style={{Stealth[length=1.6mm]}-{Stealth[length=1.6mm]}, semithick}]
+    % FedAvg
+    \begin{scope}
+      \node[server] (srv) at (0,0) {server};
+      \foreach \i/\x/\y in {1/-1.79/0.65, 2/-0.72/1.54, 3/0.76/1.63, 4/1.84/0.49, 5/1.30/-1.09,
+          6/-0.16/-1.79, 7/-1.47/-0.85}
+        \node[part] (a\i) at (\x,\y) {};
+      \foreach \i in {1,...,7} \draw[link] (a\i) -- (srv);
+      \node[font=\small\bfseries] at (0,2.35) {FedAvg};
+      \node[font=\footnotesize, align=center] at (0,-2.6) {every model passes\\through the server};
+    \end{scope}
+    % Gossip
+    \begin{scope}[xshift=5.6cm]
+      \foreach \i/\x/\y in {1/-1.79/0.65, 2/-0.72/1.54, 3/0.76/1.63, 4/1.84/0.49, 5/1.30/-1.09,
+          6/-0.16/-1.79, 7/-1.47/-0.85}
+        \node[part] (b\i) at (\x,\y) {};
+      \foreach \i/\j in {1/2, 2/3, 3/4, 4/5, 1/7}
+        \draw[link] (b\i) -- (b\j);
+      \node[font=\footnotesize, right=1mm of b6] {isolated};
+      \node[font=\small\bfseries] at (0,2.35) {Gossip};
+      \node[font=\footnotesize, align=center] at (0,-2.6) {each node talks\\only with its neighbors};
+    \end{scope}
+  \end{tikzpicture}
+  \caption[Centralized and decentralized aggregation]{Two ways to combine the models of seven participants
+    (circles). In \acs{FedAvg} (left), each participant sends its model to the server and receives the
+    average of all. In gossip (right), there is no server: each participant exchanges models only with its
+    neighbors, joined to it by a line, and an isolated participant keeps its own model.}
+  \label{fig:bg-fedavg-gossip}
+\end{figure}
+
 \subsection{Averaging with neighbors}
 % Algoritmos de gossip: una ronda de promedio con los vecinos y cómo la estructura del grafo determina la velocidad de convergencia al consenso.
 
+In a \termdef{gossip algorithm}, each node replaces its value with an average of its own value and those of
+its neighbors \cite{boyd+06gossip}. With equal weights, one round is
+\begin{equation}
+  x_k \leftarrow \frac{1}{1 + |\Nset_k|} \Bigl( x_k + \sum_{j \in \Nset_k} x_j \Bigr)
+  \quad \text{for every node } k \label{eq:bg-gossip}
+\end{equation}
+\begin{wherelist}
+  \item $x_k$ is the value of node $k$ before the round; in federated learning, it is the vector of weights
+    of its model;
+  \item $\Nset_k$ is the set of neighbors of node $k$, and $|\Nset_k|$ is its degree.
+\end{wherelist}
+All the nodes average at the same time, with the values from before the round, and an isolated node keeps
+its value.
+
+If the graph is connected, repeating this rule brings all the nodes to a common value; the graph reaches
+\termdef{consensus} \cite{olfatisaber+07consensus,boyd+06gossip}. This also holds if the graph changes from
+round to round, as long as, over time, it connects all the nodes \cite{olfatisaber+07consensus}. How fast it
+happens depends on how well connected the graph is. For example, on a chain of three nodes, 1--2--3, with
+initial values 0, 0, and 9, one round gives 0, 3, and 4.5, and the next one 1.5, 2.5, and 3.75: the value of
+node 3 reaches node 1, although the two never talk. The values converge to $18/7 \approx 2.57$, not to the
+simple average of 3, because nodes with more neighbors weigh differently; reaching the exact average
+requires special weights \cite{boyd+06gossip}. To share what has been learned, it is enough that the models
+come closer to each other.
+
+In \ac{FedAvg}, the graph is a star, and one round brings everyone to the average. Decentralized aggregation
+gives up that speed in exchange for not depending on a central node.
+
 \subsection{Learning and averaging at the same time}
 % Combinar pasos de entrenamiento local con rondas de promedio (D-PSGD de Lian et al) y su costo de comunicación frente a la versión centralizada.
+
+In decentralized learning, the nodes also train between rounds, each one with its own data.
+\citet{lian+17dpsgd} analyzed this scheme for stochastic gradient descent, under the name D-PSGD: in each
+iteration, every node averages its model with those of its neighbors and takes a gradient step on its own
+data. The total computation is comparable to that of the centralized version, but the communication of the
+busiest node depends on its number of neighbors, not on the total number of nodes, as it does for a central
+server. On networks with low bandwidth or high latency, this made the decentralized version faster. This
+thesis follows the same pattern, local training between rounds of averaging with neighbors;
+Chapter~\ref{chap:related-work} reviews other decentralized schemes.
+
+\begin{keyidea}
+  Without a server, each node averages its model with those of its neighbors. Round after round, what each
+  node knows spreads through the graph until it reaches the others. Averaging everyone at once is no longer
+  possible, but no node carries all the communication, and the failure of a single node does not stop the
+  others.
+\end{keyidea}
