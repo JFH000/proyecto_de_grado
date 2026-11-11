@@ -1,22 +1,215 @@
 \chapter{Introduction}
+\label{chap:introduction}
 
+This thesis is about how many vehicles can learn to share a scarce resource: the radio channels on which
+they communicate. Each pair of vehicles that talk to each other decides, again and again, on which channel
+to transmit and with how much power. If all the pairs choose well, their messages arrive on time and the
+cellular network, which owns those channels, is barely affected. If they choose badly, they disturb each
+other and take capacity away from the cellular network. The thesis proposes and evaluates two changes to a
+recent learning method for this problem: a way to share what the vehicles learn that does not go through
+the base station of the cellular network, and a way to reward each vehicle for what it did itself.
+
+%%
 \section{Motivation}
 % Por qué importan los enlaces V2V (avisos de seguridad con poco retardo y alta confiabilidad), cómo reutilizan los canales de la red celular y por qué elegir canal y potencia es un problema difícil que se ha abordado con MARL federado Li et al
+\label{sec:intro-motivation}
 
+Modern vehicles exchange information to warn of sudden braking, to prevent collisions, and to coordinate
+traffic. When two nearby vehicles communicate directly, without going through an antenna, they form a
+\ac{V2V} link. These links do not need to carry much data, but they must deliver it with little delay and
+high reliability: a braking warning that arrives late is useless. The \ac{3GPP}, for example, sets a maximum
+latency of \SI{100}{\milli\second} for these messages \cite{3gpp16v2x}.
+
+Radio spectrum is scarce and expensive. A common way to serve \ac{V2V} links without giving them channels of
+their own is to let them \emph{reuse} the channels that the cellular network has already assigned to its
+users, the \acp{CUE} \cite{liang+19spectrum,li+22fedmarl}. Reuse makes better use of the spectrum, but it
+creates interference in both directions. A vehicle that transmits on the channel of a cellular user lowers
+the quality of the signal that this user sends to the \ac{BS}, and the signal of the cellular user, in turn,
+disturbs the receiver of the vehicle. If two pairs of vehicles choose the same channel, they also interfere
+with each other.
+
+Deciding which channel each pair reuses, and with what power it transmits, is hard for two reasons. The
+first is that the environment changes quickly. Vehicles move, radio conditions vary from one millisecond to
+the next, and with them changes which choice is good. A central controller that wanted to decide for
+everyone would need to know the state of every link at every instant, which requires a lot of control
+signaling \cite{li+22fedmarl}. The second reason is that decisions made now affect what happens later. A pair
+that stops transmitting does not interfere with anyone, but the data it must send keep piling up in its
+\emph{queue}, and sooner or later it will have to send them in a hurry. The problem is therefore a sequence
+of linked decisions, not a one-step optimization.
+
+This kind of problem is what \ac{RL} studies: an agent learns to decide by trying actions and observing the
+rewards it receives \cite{sutton+18rl}. When each pair of vehicles is an agent that decides with what it
+observes around it, the problem becomes one of \ac{MARL}, with the difficulties of that field
+\cite{gronauer+22marlsurvey,nguyen+20madrl}. Each agent sees only part of the network. Since all of them
+learn at the same time, the environment that each one sees keeps changing, because the others also change
+how they act. And the number of possible combinations of actions grows exponentially with the number of
+agents.
+
+One way for the agents to benefit from the experience of the others, without gathering their data in one
+place, is \ac{FL}. In its best-known form, \ac{FedAvg}, each participant trains its own copy of a model with
+its own data, and a central server periodically averages the parameters of all the copies and sends the
+average back \cite{mcmahan+17fedavg}. \citet{li+22fedmarl} applied this idea to \ac{V2V} resource
+allocation. In their scheme, each pair of vehicles is an agent with a neural network that learns from its
+own observations, and the \ac{BS} of the cell periodically averages the networks of all the agents and
+sends them the result. In addition, the \ac{BS} computes at every instant a single reward, which measures
+the performance of the whole cell, and sends it to all the agents. In their simulations, this scheme
+outperformed their reference methods both in the rate of the \acp{CUE} and in the delay of the \ac{V2V}
+links \cite{li+22fedmarl}.
+
+This design puts the \ac{BS} at the center of learning. The vehicles decide on their own, precisely so as
+not to depend on the cellular infrastructure, but they cannot learn without it. In every round, the \ac{BS}
+receives all the models, averages them, and sends the result back, and at every instant it computes and
+broadcasts the reward. A central server of this kind is a single point of failure, concentrates the whole
+communication load on one node, and must be trusted by every participant \cite{kairouz+21advances,ge+24dfl}.
+In a vehicular network, these costs are concrete: all the model traffic goes through the cellular network,
+and a vehicle that loses contact with the \ac{BS} stops benefiting from what the others learn.
+
+\Ac{DFL} removes the central server. The participants connect directly to each other, and each one combines
+what a few neighbors have learned, so that knowledge spreads through the network without a coordinator
+\cite{lian+17dpsgd,hegedus+19gossip,ge+24dfl}. The vehicular setting seems made for this idea. In the scheme
+of \citet{li+22fedmarl}, each pair already uses information from the pairs within \SI{300}{\meter}, its
+maximum communication range. Those same neighbors could exchange their models directly, and since vehicles
+move, the groups through which knowledge flows would change too. \citet{zhang+20v2xfed} already average
+models only within groups of nearby pairs, but it is still the \ac{BS} that forms the groups and does the
+averaging.
+
+A second choice of the original scheme also deserves a second look: the shared reward. When all the agents
+receive the same number, none of them can tell which part of that number it caused and which part the
+others caused. This is the problem of \termdef{credit assignment}, one of the central challenges of
+multi-agent learning \cite{wolpert+01collectives,agogino+08rewards,gronauer+22marlsurvey}. It gets worse as
+the number of agents grows, because the contribution of each one is diluted among those of all the others.
+
+%%
 \section{Problem statement}
 % El esquema de Li et al. decide de forma descentralizada pero aprende a través de la BS (FedAvg y recompensa compartida). Preguntas de investigación: PI1, quitar la BS de la agregación de modelos; PI2, usar una recompensa individual por agente.
+\label{sec:intro-problem}
 
+The scheme of \citet{li+22fedmarl} is decentralized when it decides, but centralized when it learns. The
+\ac{BS} takes part at two points: it averages the models of all the agents with \ac{FedAvg}, and it computes
+the shared reward from which all of them learn. This thesis asks whether these two pieces are necessary,
+through two research questions:
+
+\begin{description}
+  \item[RQ1.] Can the \ac{BS} be removed from the aggregation of models, by having each vehicle average its
+    model with those of nearby vehicles, without losing performance? How much communication does this cost,
+    and how is the load spread across the nodes of the network?
+  \item[RQ2.] Do the agents learn better if each one receives an individual reward, which measures what its
+    own action can change, instead of the reward shared by all?
+\end{description}
+
+By \emph{performance} we mean what the original scheme measures: the rate of the \acp{CUE} and the delay and
+reliability of the \ac{V2V} links, which are combined into a single number, the shared reward of
+\citet{li+22fedmarl} (Section~\ref{sec:sm-shared-reward}). To keep the comparison fair, every method is
+judged by that same reward, even when its agents learn from another one. By \emph{communication cost} we
+mean how many models are transferred between nodes, and in how many of those transfers the busiest node
+takes part (Section~\ref{sec:pa-comm-cost}). A scheme in which everything goes through a single node scales
+worse than one that spreads the load.
+
+%%
 \section{Objectives}
 % Objetivo general (diseñar, implementar y evaluar la arquitectura descentralizada con recompensa individual) y lista de objetivos específicos.
+\label{sec:intro-objectives}
 
+The general objective of this thesis is to design, implement, and evaluate a decentralized federated
+learning architecture for multi-agent reinforcement learning applied to \ac{V2V} resource allocation, which
+removes the \ac{BS} from the aggregation of models, together with an individual reward for each agent. The
+specific objectives are:
+
+\begin{enumerate}
+  \item Implement the scheme of \citet{li+22fedmarl} (the simulation environment, the agents, and the
+    aggregation with \ac{FedAvg}), together with the reference methods needed to interpret its results:
+    agents that learn without sharing anything, and fixed rules that do not learn. Check every equation of
+    the model with automated tests.
+  \item Design an aggregation by gossip, in which each agent averages its model with those of the pairs
+    within its communication range, without the \ac{BS}, and analyze its communication cost.
+  \item Design an individual reward for each agent and compare it with the shared reward.
+  \item Evaluate the combinations of aggregation and reward with 5 to 30 \ac{V2V} pairs, in terms of reward,
+    quality of service, learning speed, similarity between the models of the agents, and communication
+    cost.
+\end{enumerate}
+
+%%
 \section{Contributions}
 % Las tres contribuciones: implementación verificada y reproducible del esquema de Li et al., agregación descentralizada por gossip entre vecinos y recompensa individual por agente.
+\label{sec:intro-contributions}
 
+This thesis makes three contributions:
+
+\begin{enumerate}
+  \item \textbf{A tested and reproducible implementation of the scheme of \citet{li+22fedmarl}.} It includes
+    a multi-agent simulation environment with the channel, queue, and reward models of the paper, simplified
+    where needed; \ac{D3QN} agents with \ac{PER}; three forms of aggregation (\ac{FedAvg}, gossip, and none);
+    and two fixed reference rules. It is checked by 191 automated tests, and a script generates the tables
+    and figures of the results directly from the logs of the runs, without copying anything by hand. The
+    evaluation comprises 216 runs of 2000 episodes, about 800 hours of computation
+    (Section~\ref{sec:exp-runs}). It reproduces part of the behavior of the published scheme: with the Greedy rule, the rate of the
+    \acp{CUE} falls by 65\% from 5 to 30 pairs, against 70\% in the paper, and learning protects the
+    \acp{CUE} much better. It does not reproduce the absolute values, the delay, or, with the shared reward,
+    the fall in the rate of the \acp{CUE} (Section~\ref{sec:res-replication}).
+
+  \item \textbf{A decentralized architecture for federated learning among neighboring vehicles.} Each agent
+    averages its network with those of the pairs within \SI{300}{\meter}, the same neighborhood that its
+    observation already uses, without going through the \ac{BS}. The groups of neighbors change with the
+    positions of the vehicles, and a variant limits to $S$ the number of neighbors per round to bound the
+    cost (Chapter~\ref{chap:proposed-architecture}). With the individual reward, this aggregation beats
+    \ac{FedAvg} in all 12 paired comparisons with 10 to 25 pairs, by 459 to 1754 points of reward per
+    episode, and in 14 of 18 over all six numbers of pairs (Section~\ref{sec:res-gossip}). The variant with
+    $S = 2$ beats \ac{FedAvg} in 16 of 18 comparisons, including every seed from 10 to 30 pairs, never
+    transfers more models than \ac{FedAvg}, and its busiest vehicle takes part in 10\% to 34\% of the
+    transfers that the \ac{BS} handles in \ac{FedAvg} (10\% to 26\% from 10 pairs on)
+    (Section~\ref{sec:res-communication}).
+
+  \item \textbf{An individual reward that works better than the shared reward.} Each agent is judged by its
+    own queue, by the reliability of its own link, and by the \ac{CUE} of the channel it chose
+    (Section~\ref{sec:pa-individual-reward}). Measured with the shared reward of all the agents, it improves
+    the result in 50 of 54 paired comparisons, and in all 18 with gossip, by 244 to 3726 points. With the
+    shared reward, by contrast, the agents learn to stay silent almost all the time as the number of pairs
+    grows (Section~\ref{sec:res-reward}).
+\end{enumerate}
+
+The two proposals reinforce each other. Without the individual reward, gossip does not consistently beat
+\ac{FedAvg}: it wins 10 of 18 comparisons. With it, gossip wins in the whole middle range of the number of
+pairs. Together, they beat our implementation of the original scheme of \citet{li+22fedmarl}, that is,
+\ac{FedAvg} with the shared reward, in all 18 paired comparisons: three seeds for each of the six sizes of
+the network (Section~\ref{sec:res-combined}).
+
+These gains have a limit. A fixed rule that uses only local information, the strength of the pair's own link
+and its queue, beats every learning method, including the proposal (Section~\ref{sec:res-threshold}). The
+contributions improve learning compared with the original scheme, but they do not close the gap to what that
+information allows.
+
+%%
 \section{Scope}
 % Límites del trabajo: todo es simulación, una sola celda con 15 CUE y 5 a 30 pares V2V, simplificaciones frente al artículo original y posiciones fijas dentro de cada episodio.
+\label{sec:intro-scope}
 
-\section{How to read this document}
-% Para quién está escrito el documento, qué capítulo explica los conceptos desde cero y qué ayudas de lectura tiene (resúmenes de ideas clave, explicación de los símbolos después de cada ecuación).
+All the results of this thesis come from simulation. Section~\ref{sec:sm-scenario} describes the scenario;
+here we only summarize where it simplifies the model of \citet{li+22fedmarl}: the vehicles are placed
+uniformly in the cell instead of on roads, the channel has a single path-loss law, and the traffic is
+constant. The positions of the vehicles change from one episode to the next, but not within an episode. The
+models are exchanged between nodes instantly, without errors, and without using the spectrum that the
+agents share. The individual reward is not completely local: its term for the \ac{CUE} of the chosen channel
+needs the \ac{BS} to broadcast the rate of that user. The comparisons with the original scheme are
+comparisons with our implementation of it, which differs from the paper in several training choices. Each
+configuration was run with three seeds. Sections~\ref{sec:res-threats} and~\ref{sec:conc-limitations}
+discuss these limitations.
 
+%%
 \section{Document structure}
 % Un párrafo que resume qué contiene cada capítulo y cada apéndice.
+\label{sec:intro-structure}
+
+Chapter~\ref{chap:background} presents the basic concepts of vehicular communications, reinforcement
+learning, multi-agent learning, and federated learning. Chapter~\ref{chap:related-work} reviews the related
+work and places this thesis with respect to it. Chapter~\ref{chap:system-model} describes the scenario, the
+channel model, the queues, and the reward, and formulates the problem as a multi-agent decision problem.
+Chapter~\ref{chap:proposed-architecture} presents the agents, the centralized aggregation with \ac{FedAvg},
+the decentralized aggregation by gossip, the individual reward, and the communication cost of each scheme.
+Chapter~\ref{chap:experimental-setup} details the parameters, the compared methods, the metrics, and how the
+methods are compared. Chapter~\ref{chap:results} presents and discusses the results. Finally,
+Chapter~\ref{chap:conclusions} answers the research questions and sums up the contributions, the
+limitations, and the future work. The appendices gather the notation (Appendix~\ref{apx:notation}), the
+diagnosis of training and the configuration choices (Appendix~\ref{apx:diagnosis}), the detailed results
+(Appendix~\ref{apx:detailed-results}), and the instructions to reproduce the experiments
+(Appendix~\ref{apx:reproducibility}). Readers who already know the field can go directly from this chapter
+to Chapter~\ref{chap:system-model}.

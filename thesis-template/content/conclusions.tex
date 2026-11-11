@@ -1,17 +1,156 @@
 \chapter{Conclusions}
 \label{chap:conclusions}
 
+This thesis started from a federated multi-agent reinforcement learning scheme that assigns channels and
+transmit powers to \ac{V2V} links \cite{li+22fedmarl}. In that scheme, the vehicles decide on their own, but
+they learn through the \ac{BS}: it averages their models and computes the reward from which all of them learn.
+We implemented the scheme, proposed to take the aggregation away from the \ac{BS} and to give each agent its
+own reward, and evaluated these proposals in 216 runs, with 5 to 30 \ac{V2V} pairs. This chapter answers the
+research questions (Section~\ref{sec:conc-answers}), sums up the contributions and other findings
+(Sections~\ref{sec:conc-contributions} and~\ref{sec:conc-findings}), discusses the limitations
+(Section~\ref{sec:conc-limitations}), and proposes future work (Section~\ref{sec:conc-future}).
+
+%%
 \section{Answers to the research questions}
 % Respuesta directa a PI1 (quitar la BS de la agregación) y a PI2 (recompensa individual), con los números principales.
+\label{sec:conc-answers}
 
+\paragraph{RQ1: Can the BS be removed from the aggregation of models without losing performance, and at what
+cost?} Yes. With the individual reward, gossip among neighbors beats \ac{FedAvg} in all 12 paired comparisons
+with 10 to 25 pairs, by 459 to 1754 points of reward per episode. Over all six values of $K$, it wins 14 of 18
+comparisons ($p \approx 0.015$). With 5 pairs, the two tie. With 30 pairs, \ac{FedAvg} beats gossip with all
+its neighbors in two of the three seeds, but gossip with at most two neighbors per round beats \ac{FedAvg} in
+all three. With the shared reward, the two forms of aggregation tie: gossip wins 10 of 18 comparisons
+($p \approx 0.41$).
+
+The cost has two sides. In total, gossip with all its neighbors transfers more models than \ac{FedAvg} from 10
+pairs on, up to 3.9 times more with 30 pairs, because each vehicle has more neighbors when there are more
+vehicles. But the load is spread out: its busiest vehicle takes part in 36\% to 43\% of the transfers that the
+\ac{BS} handles in \ac{FedAvg}, and these transfers do not go through the cellular network. With at most two
+neighbors per round, the total never exceeds that of \ac{FedAvg}, and the load of the busiest vehicle stops
+growing with the number of pairs. With 30 pairs, it is a tenth of the load of the \ac{BS}. This variant also
+keeps the reward: it beats \ac{FedAvg} in 16 of 18 comparisons ($p \approx 7 \times 10^{-4}$).
+
+\paragraph{RQ2: Do the agents learn better from an individual reward?} Yes, by a wide margin. We judged all the
+agents by the shared reward. Even so, the agents that learn from their individual reward score higher than the
+agents that learn from the shared reward itself in 50 of 54 paired comparisons
+($p \approx 2 \times 10^{-11}$), including all 18 with gossip. With the methods that share their models, the
+advantage tends to grow with the number of pairs, although not steadily. With the shared reward, the signal of
+each agent gets lost among those of all the others, and with many pairs the agents learn to stay silent almost
+all the time. With 25 pairs, the pairs of \ac{FedAvg} and gossip miss their reliability condition in 92\% to
+93\% of the slots.
+
+\paragraph{The two together.} The two proposals reinforce each other: gossip consistently beats \ac{FedAvg} only
+when the agents learn from the individual reward. Together, they beat our implementation of the original scheme
+in all 18 paired comparisons, for every number of pairs and every seed. With 15 pairs, the reward is 1.8 times
+higher, and with 25 pairs, it goes from $-1682$ to 1545.
+
+%%
 \section{Contributions}
 % Las tres contribuciones y lo que se logró con cada una.
+\label{sec:conc-contributions}
 
+\begin{enumerate}
+  \item \textbf{A tested and reproducible implementation of the scheme of \citet{li+22fedmarl}}, with its
+    environment, its agents, and three forms of aggregation. It has 191 automated tests, and the tables and
+    figures of the results are generated directly from the logs of the runs. It reproduces part of the
+    behavior of the published scheme (Section~\ref{sec:res-replication}).
+  \item \textbf{A decentralized architecture for federated learning}, in which each vehicle averages its model
+    with those of its neighbors within \SI{300}{\meter}, without the \ac{BS}. It also has a variant with a
+    bounded cost, which uses at most $S$ neighbors per round.
+  \item \textbf{An individual reward} that judges each agent by what its own action can change. Measured with
+    the reward of all the agents, it gives better results than the shared reward.
+\end{enumerate}
+
+%%
 \section{Other findings}
-% Hallazgos secundarios: el factor de descuento importa, compartir con todos no siempre ayuda, FedAvg aprende rápido pero olvida y una regla simple sigue siendo mejor.
+% Hallazgos secundarios: el factor de descuento importa, compartir con todos no siempre ayuda y la ventaja de gossip aparece después de la exploración.
+\label{sec:conc-findings}
 
+\paragraph{The discount factor matters.} \citet{li+22fedmarl} do not give the value of $\gamma$. With 0.99, the
+value used by \citet{mnih+15dqn} and often taken as the default, our implementation loses 29\% of its best reward when
+exploration ends and finishes below Greedy. With 0.9, it loses only 3\%. This result comes from a single seed
+and 10 pairs.
+
+\paragraph{Sharing with everyone does not always help.} With the individual reward, \ac{FedAvg} beats the
+agents that learn alone in only 9 of 18 comparisons, and gossip beats them in 16 of 18. With 10 to 20 pairs,
+averaging with all the agents gives the same result as not sharing, or a worse one. Whom an agent shares with
+matters.
+
+\paragraph{The advantage of gossip appears after exploration.} \ac{FedAvg} and gossip learn at the same pace
+while the agents explore. When exploration ends, with the individual reward and 10 to 25 pairs, \ac{FedAvg}
+drops and gossip keeps what it learned. With 30 pairs, this no longer holds. This thesis did not find out why
+the two separate at that point.
+
+%%
 \section{Limitations}
-% Simulación simplificada, recompensa individual que no es del todo local, intercambios ideales y demasiado frecuentes, evidencia estadística moderada y distancia a lo que es posible lograr.
+% Simulación simplificada, implementación distinta del esquema publicado, recompensa individual que no es del todo local, intercambios ideales y demasiado frecuentes, evidencia estadística moderada y distancia a lo que es posible lograr.
+\label{sec:conc-limitations}
 
+\paragraph{A simplified simulation.} All the results come from a simulator with one cell, one path-loss law,
+uniform positions that do not change within an episode, and constant traffic. With realistic mobility and
+propagation, the size of the effects may change.
+
+\paragraph{The implementation is not the published scheme.} It differs from \citet{li+22fedmarl} in several
+training choices, and we tested only some of them with their values. It also does not reproduce their delay or,
+with the shared reward, their fall in the rate of the \acp{CUE}. So the results show that the proposal beats this
+implementation of the original scheme. They do not show that it would beat the published scheme with its own
+settings.
+
+\paragraph{The individual reward is not fully local.} Its term for the \ac{CUE} of the chosen channel needs the
+\ac{BS} to broadcast the rate of its users in every slot. The reward also ignores the interference that a pair
+causes to the other pairs on its channel. In this problem, that did not stop it from working better than the
+shared reward, but it could matter more in denser scenarios. In addition, our results measure two changes
+together: the terms that belong to each agent and the queue measured at the end of the slot.
+
+\paragraph{Ideal and too frequent exchanges.} The models are transferred without losses, without delay, and
+without using the spectrum that the agents share. Rounds every \SI{50}{\milli\second} would need about
+\SI{19.5}{Mbps} per vehicle with \ac{FedAvg}. The comparison between the forms of aggregation holds in relative
+terms, but it does not estimate the cost of a real system.
+
+\paragraph{Moderate statistical evidence.} Three seeds per configuration give consistent paired comparisons, but
+they cannot measure the size of the differences precisely. We singled out the range of 10 to 25 pairs and the
+variant with $S = 2$ after seeing the results, so the comparisons over all six values of $K$ are the safer
+numbers. We also tuned the configuration with a single seed, with \ac{FedAvg}, and with 10 pairs. See
+Section~\ref{sec:res-threats} for the statistical caveats.
+
+\paragraph{Far from what is possible.} No learning method reaches the threshold rule. The contributions improve
+learning compared with our implementation of the original scheme, but they do not close that gap.
+
+%%
 \section{Future work}
-% Escenarios más realistas, mejores recompensas, comunicación más barata y realista, entender por qué ayudan los vecinos, acercarse a la regla de umbral y robustez.
+% Escenarios más realistas, comparación con el esquema publicado, mejores recompensas, comunicación más barata y realista, entender por qué ayudan los vecinos, mejores entradas y entrenamiento, y robustez.
+\label{sec:conc-future}
+
+\paragraph{More realistic scenarios.} Evaluate the proposals with vehicles that move along roads, with the full
+propagation models of the \ac{3GPP}, and with packet traffic, and measure how much the advantages of gossip and
+of the individual reward change.
+
+\paragraph{A closer comparison with the published scheme.} Test the learning rate and the learning frequency of
+\citet{li+22fedmarl}, which the diagnosis did not try, to find out whether the published scheme has the same drop.
+
+\paragraph{Better rewards.} Try difference rewards \cite{wolpert+01collectives,agogino+08rewards}, which also
+count the harm that a pair causes to the other pairs on its channel and are still easy to learn from. Estimate
+the effect on the \ac{CUE} locally, so that the agents do not depend on a broadcast from the \ac{BS}.
+
+\paragraph{Cheaper and more realistic communication.} Reduce how often the rounds happen, compress the models,
+and use the fact that a vehicle can send its model to all its neighbors with a single broadcast. Model the
+losses and delays of the channel between vehicles. Study asynchronous gossip, in which each vehicle averages
+when it can, without common rounds.
+
+\paragraph{Why neighbors help.} Test the explanation of Section~\ref{sec:res-discussion}, that neighbors help
+because they are in similar situations. One way is to measure the dispersion of the weights according to the
+distance between agents. Another is to weigh each neighbor by how similar its situation is. Also find out why
+the gap between \ac{FedAvg} and gossip appears only after exploration ends.
+
+\paragraph{Better inputs and training.} Give the agents an estimate of the large-scale gain of their link as an
+input, since today they must deduce it from 15 noisy gains. Look for ways to avoid the drop when exploration
+ends.
+
+\paragraph{Robustness.} Study what happens when vehicles enter and leave the cell, when exchanges fail, or when
+a neighbor sends harmful models. Decentralized aggregation spreads this last risk, but it does not remove it.
+
+\bigskip
+\noindent In short, the \ac{BS} does not need to be at the center of learning. Vehicles can learn to share the
+spectrum by averaging their models with their neighbors and by each learning from its own reward. In this
+simulator, they learn better this way than with our implementation of the centralized scheme.

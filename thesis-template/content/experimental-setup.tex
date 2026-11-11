@@ -1,21 +1,349 @@
 \chapter{Experimental setup}
 \label{chap:experimental-setup}
 
+This chapter describes how the contributions were evaluated: with which parameters the cell was simulated
+(Section~\ref{sec:exp-parameters}), where the implementation departs from the original scheme
+(Section~\ref{sec:exp-differences}), which methods were compared (Section~\ref{sec:exp-methods}), which runs
+were made (Section~\ref{sec:exp-runs}), by which measures each method was judged
+(Section~\ref{sec:exp-metrics}), and how the methods were compared with each other
+(Section~\ref{sec:exp-comparisons}).
+
+%%
 \section{Parameters}
 % Tablas de parámetros del escenario, el canal y la recompensa, y de los agentes y la agregación, indicando de dónde sale cada valor.
 \label{sec:exp-parameters}
 
+All the runs share the parameters of Tables~\ref{tab:exp-parameters} and~\ref{tab:exp-agent-parameters}. The
+first describes the scenario, the channel, and the reward; the second, the agents and the aggregation. From
+one run to another, only the number of pairs $K$, the method, the reward from which the agents learn, and the
+seed change. The last column of each table gives the source of each value: Tables~II and~III of
+\citet{li+22fedmarl}, the \ac{3GPP} report \cite{3gpp16v2x}, an equation of
+Chapter~\ref{chap:system-model}, the diagnosis of Appendix~\ref{apx:diagnosis}, or this thesis, when the
+paper gives no value or the value was changed on purpose (Section~\ref{sec:exp-differences}).
+
+\begin{table*}[tbp]
+  \centering
+  \linespread{1}\small
+  \caption[Parameters of the scenario, the channel, and the reward]{Parameters of the scenario, the channel,
+    and the reward. ``Li'' stands for Tables~II and~III of \citet{li+22fedmarl}.}
+  \label{tab:exp-parameters}
+  \begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}X l
+      >{\raggedright\arraybackslash}p{5.2cm} >{\raggedright\arraybackslash}p{3.2cm}@{}}
+    \toprule
+    Parameter & Symbol & Value & Source \\
+    \midrule
+    \multicolumn{4}{@{}l}{\emph{Scenario}} \\
+    Radius of the cell & --- & \SI{500}{\meter} & this thesis \\
+    Cellular users (and channels) & $M$ & 15 & Li \\
+    \acs{V2V} pairs & $K$ & 5, 10, 15, 20, 25, and 30 & Li \\
+    Distance from transmitter to receiver & --- & 10 to \SI{50}{\meter} & this thesis \\
+    Neighbor radius & --- & \SI{300}{\meter} & \acs{3GPP} \\
+    Duration of a slot & $\tau$ & \SI{1}{\milli\second} & this thesis \\
+    Slots per episode & --- & 200 & this thesis \\
+    \midrule
+    \multicolumn{4}{@{}l}{\emph{Channel and powers}} \\
+    Bandwidth of each channel & $W$ & \SI{1}{\mega\hertz} & Li \\
+    Path-loss constants & $\varphi$, $e$ & \SI{-68.5}{dB} and 1.61 & Li \\
+    Noise spectral density & --- & \SI{-174}{dBm/Hz}, so $\sigma^2 = \SI{-114}{dBm}$ & Li \\
+    Power of each \acs{CUE} & $P^{\mathrm{c}}$ & \SI{23}{dBm} & Li \\
+    Maximum power of each pair & $\Pmax$ & \SI{23}{dBm} & Li \\
+    Power levels & $N_p + 1$ & 4 (Equation~\ref{eq:sm-power-levels}) & text of Li, with $N_p = 3$ \\
+    \midrule
+    \multicolumn{4}{@{}l}{\emph{Quality of service and reward}} \\
+    Data arrival rate & $\lambda$ & \SI{1}{Mbps} & this thesis \\
+    Maximum delay & $\Dmax$ & \SI{100}{\milli\second} & \acs{3GPP} \\
+    Maximum queue & $\Qmax$ & \num{100000} bits & Section~\ref{sec:sm-queue} \\
+    Minimum \acs{SINR} & $\gamma_{\mathrm{o}}$ & \SI{5}{dB} & Li \\
+    Maximum outage probability & $p_{\mathrm{o}}$ & 0.1 & this thesis \\
+    Reliability threshold & $\gth$ & 30, about \SI{14.8}{dB} & Equation~\ref{eq:sm-reliability} \\
+    Minimum rate of each \acs{CUE} & $\Rmin$ & \SI{1}{Mbps} & this thesis \\
+    Weights of the reward & $\lambda_1, \lambda_2, \lambda_3$ & 0.3, 0.5, and 0.2 & Li \\
+    Penalty & $A$ & $-10$ & this thesis \\
+    \bottomrule
+  \end{tabularx}
+\end{table*}
+
+\begin{table*}[tbp]
+  \centering
+  \linespread{1}\small
+  \caption[Parameters of the agents and the aggregation]{Parameters of the agents and the aggregation.
+    ``Li'' stands for Table~III of \citet{li+22fedmarl}.}
+  \label{tab:exp-agent-parameters}
+  \begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}X l
+      >{\raggedright\arraybackslash}p{5.2cm} >{\raggedright\arraybackslash}p{3.2cm}@{}}
+    \toprule
+    Parameter & Symbol & Value & Source \\
+    \midrule
+    \multicolumn{4}{@{}l}{\emph{Agent and training}} \\
+    Hidden layers & --- & 128 and 128 neurons, ReLU & this thesis \\
+    Optimizer & --- & Adam & Li \\
+    Learning rate & --- & $10^{-3}$ & this thesis \\
+    Transitions per minibatch & --- & 128 & Li \\
+    Capacity of the buffer & --- & \num{10000} transitions & Li \\
+    Prioritized replay & $\omega$; $\beta$; $\epsilon_{\mathrm{p}}$ & 0.6; 0.4 to 1; $10^{-5}$ & this thesis \\
+    Discount factor & $\gamma$ & 0.9 & diagnosis \\
+    Copy of the target network & --- & every 400 learning steps & interval of Li \\
+    Exploration & $\varepsilon$ & 1 to 0.05 in the first 60\% of training & this thesis \\
+    Episodes per run & --- & 2000 (\num{400000} slots) & this thesis \\
+    \midrule
+    \multicolumn{4}{@{}l}{\emph{Aggregation}} \\
+    Slots between rounds & $N_{\mathrm{a}}$ & 50 (four rounds per episode) & this thesis \\
+    Neighbors per round in the capped variant & $S$ & 2 and 3 & this thesis \\
+    \bottomrule
+  \end{tabularx}
+\end{table*}
+
+%%
+\section{Differences from the original scheme}
+% Tabla con cada diferencia frente a Li et al. (simplificaciones del canal, la geometría y el tráfico, valores que el artículo no reporta y elecciones de entrenamiento) y su justificación.
+\label{sec:exp-differences}
+
+The implementation follows the model of \citet{li+22fedmarl}, but it departs from it in several points,
+gathered in Table~\ref{tab:exp-differences}. Some are simplifications of the scenario. Others are corrections,
+or values that the paper does not give and that had to be fixed. The rest are training choices, several of
+which the diagnosis of Appendix~\ref{apx:diagnosis} supports. The individual reward, gossip aggregation, and
+the threshold rule are not in the table, because they are not departures but contributions of this thesis.
+Because of these differences, the comparisons with the original scheme are comparisons with this
+implementation of it (Section~\ref{sec:res-replication}).
+
+\begin{table*}[tbp]
+  \centering
+  \linespread{1}\small
+  \caption[Differences from Li et al. (2022)]{Differences between the implementation and the scheme of
+    \citet{li+22fedmarl}.}
+  \label{tab:exp-differences}
+  \begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{2.6cm}
+      >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X
+      >{\raggedright\arraybackslash}X@{}}
+    \toprule
+    Aspect & \citet{li+22fedmarl} & This thesis & Reason \\
+    \midrule
+    \multicolumn{4}{@{}l}{\emph{Scenario}} \\
+    Path loss & Three laws, depending on the line of sight between vehicles & A single law,
+      $\varphi = \SI{-68.5}{dB}$, $e = 1.61$ & Simplification \\
+    Geometry and mobility & Vehicles on lanes, at constant speed & Uniform positions in the cell, fixed within
+      an episode and new in the next & Simplification; an episode lasts \SI{0.2}{\second} \\
+    \acs{V2V} traffic & Periodic packets of several sizes & Continuous arrival at \SI{1}{Mbps} & The paper
+      gives no rate \\
+    Power levels & Evenly spaced between 0 and $\Pmax$ in the text; $-\infty$, 5, 20, and \SI{23}{dBm} in
+      Table~II & Evenly spaced: 0, $\tfrac13\Pmax$, $\tfrac23\Pmax$, and $\Pmax$ & The text and the table
+      disagree; the text is followed \\
+    \midrule
+    \multicolumn{4}{@{}l}{\emph{Reward and its parameters}} \\
+    Queue term & $U(Q_k^t - \Qmax)$, as printed & $U(\Qmax - Q_k^t)$ & With the printed sign, the reward
+      favors an overflowing queue \\
+    Scale of the terms & Margins in their own units & Each margin divided by its threshold & In their own
+      units, the rate of the \acsp{CUE} hides everything else \\
+    Parameters without a value & $A$, $p_{\mathrm{o}}$, $\Rmin$, $\lambda$, $\tau$, size of the cell &
+      $-10$, 0.1, \SI{1}{Mbps}, \SI{1}{Mbps}, \SI{1}{\milli\second}, \SI{500}{\meter} & The paper does not
+      give them \\
+    Inputs of the network & Not specified & Gains in normalized dB; queue as a fraction of $\Qmax$ & Eases
+      training; does not change the problem \\
+    \midrule
+    \multicolumn{4}{@{}l}{\emph{Training}} \\
+    Hidden layers & 500, 250, and 120 neurons & 128 and 128 & Faster; the network of the paper did not
+      improve the result (Appendix~\ref{apx:diagnosis}) \\
+    Learning rate & 0.7 & $10^{-3}$ & 0.7 is unusually high for Adam, whose usual value is $10^{-3}$
+      \cite{kingma+15adam} \\
+    Learning steps & One every 100 slots & One per slot & With one every 100 slots, each agent would learn
+      only twice per episode \\
+    Target network & Soft update after 4 learning steps (every 400 slots) & Full copy every 400 learning
+      steps (every 400 slots) & Same interval; the full copy is that of \citet{mnih+15dqn} \\
+    Floor of $\varepsilon$ & 0.1 & 0.05, reached at 60\% of training & A floor of 0.1 did not improve the
+      result (Appendix~\ref{apx:diagnosis}) \\
+    Discount factor & Not given & $\gamma = 0.9$ & Chosen in the diagnosis (Appendix~\ref{apx:diagnosis}) \\
+    Priorities & By rank of the \acs{TD} error & Proportional to the \acs{TD} error & Both are variants of
+      \citet{schaul+16per} \\
+    Loss & Squared error & Huber & More robust to large errors \cite{huber64robust} \\
+    \bottomrule
+  \end{tabularx}
+\end{table*}
+
+%%
 \section{Compared methods}
 % Las dos reglas fijas (Greedy y la regla de umbral) y los tres métodos que aprenden (DTE, FedAvg y gossip).
 \label{sec:exp-methods}
 
+The comparison includes two fixed rules, which do not learn, and three learning methods, which differ only
+in how the agents share what they learn (Table~\ref{tab:exp-methods}).
+
+\paragraph{Greedy.} This is the greedy rule with which \citet{li+22fedmarl} compare their scheme: each pair
+chooses the channel with the least interference from other pairs and always transmits at maximum power. Here,
+the interference is estimated with the only information that an agent has about the other pairs: each pair
+chooses the channel that the fewest neighbors used in the previous slot, $\textstyle\argmin_m N_k^{t-1}[m]$, and breaks
+ties at random. Breaking them at random matters. If ties go to the channel with the lowest index, all the
+pairs see the same counts in the first slot, choose the same channel, and then jump together from channel to
+channel, which makes the rule artificially weak.
+
+\paragraph{Threshold rule.} This rule is not in \citet{li+22fedmarl}; we designed it as a reference for what
+can be achieved with local information and knowledge of the problem, without learning. It chooses the channel
+as Greedy does, but it decides whether to transmit from two values of its own observation:
+\begin{equation}
+  P_k^t =
+  \begin{cases}
+    \Pmax, & \text{if } \bar h_k^t \ge \SI{-91}{dB} \text{ or } Q_k^t \ge 0.9\, \Qmax , \\
+    0, & \text{otherwise}
+  \end{cases}
+  \label{eq:exp-threshold}
+\end{equation}
+where $\bar h_k^t$ is the mean of the observed gains of its own link over the $M$ channels, in dB. Since the
+fast fading has mean 1, this mean estimates the large-scale gain of the link, that is, how far away the
+receiver is; \SI{-91}{dB} is the gain of a \SI{25}{\meter} link. A pair whose receiver is close always
+transmits. A pair whose receiver is far stays silent, which protects the \ac{CUE} of its channel, until its
+queue reaches 90\% of the maximum; then it transmits. The rule embodies an insight about the problem (weak
+links contribute little and harm a lot), not a general procedure. For that reason, it is not a proposal of
+this thesis but a yardstick.
+
+\paragraph{DTE.} Each pair has its own \ac{D3QN} agent and learns alone, sharing nothing with anyone
+(decentralized training and execution, Section~\ref{sec:bg-marl}). It is the control: it shows how much
+sharing contributes.
+
+\paragraph{FedAvg.} The agents average their networks at the \ac{BS} every 50 slots
+(Section~\ref{sec:pa-fedavg}). With the shared reward, it is the original scheme of \citet{li+22fedmarl}.
+
+\paragraph{Gossip.} The agents average their networks with their neighbors within \SI{300}{\meter} every 50
+slots (Section~\ref{sec:pa-gossip}). With the individual reward, it is the proposal of this thesis. The
+variants with $S = 2$ and $S = 3$ cap the number of neighbors of each round (Section~\ref{sec:pa-gossip-s}).
+
+\begin{table}[tbp]
+  \centering
+  \footnotesize
+  \caption[Compared methods]{Compared methods. All of them are evaluated with the shared reward of
+    Equation~\ref{eq:sm-shared-reward}, whether or not they learn from it.}
+  \label{tab:exp-methods}
+  \begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{1.9cm} l
+      >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X@{}}
+    \toprule
+    Method & Learns & Averages its network with & Learns from \\
+    \midrule
+    Greedy & No & --- & --- \\
+    Threshold rule & No & --- & --- \\
+    \acs{DTE} & Yes & nobody & shared and individual reward \\
+    \acs{FedAvg} & Yes & everyone, at the \acs{BS} & shared and individual reward \\
+    Gossip & Yes & its neighbors & shared and individual reward \\
+    Gossip, $S = 2$ and $S = 3$ & Yes & up to $S$ random neighbors & individual reward \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+%%
 \section{Runs}
 % Qué es una corrida (un método, un K y una semilla durante 2000 episodios) y los cuatro barridos: recompensa individual, recompensa compartida y gossip con S = 2 y con S = 3.
+\label{sec:exp-runs}
 
+A \termdef{run} trains one method with one value of $K$ and one seed for 2000 episodes. The runs are organized
+in four \termdef{sweeps}, and each sweep covers the six values of $K$ with seeds 0, 1, and 2:
+\begin{description}
+  \item[Individual reward.] \ac{DTE}, \ac{FedAvg}, and gossip, learning from the individual reward
+    (Equation~\ref{eq:pa-individual-reward}), plus Greedy and the threshold rule: 90 runs.
+  \item[Shared reward.] The same five methods, with the agents learning from the shared reward
+    (Equation~\ref{eq:sm-shared-reward}): 90 runs. Greedy and the threshold rule do not learn and, with the
+    same seed, see the same scenarios, so they give exactly the same results in both sweeps.
+  \item[Gossip with $S = 2$ and with $S = 3$.] Only the corresponding variant, with the individual reward:
+    18 runs each.
+\end{description}
+In total, there are 216 runs. The first two sweeps differ only in the reward from which the agents learn;
+everything else, including $\gamma = 0.9$, is the same. The difference between them therefore measures the
+effect of the reward, and the difference between gossip and \ac{FedAvg} within one sweep measures the effect
+of the aggregation.
+
+\paragraph{Same seed, same scenarios.} Episode $e$ of a run with seed $\varsigma$ draws its positions and its
+fading from the seed $10^6 \varsigma + e$. Since the number of random draws in each slot does not depend on the
+actions, two runs with the same $K$ and the same seed see exactly the same positions and the same channels in
+every episode, whatever the method. The agents and the random choice of neighbors of the capped variant use
+streams of their own, derived from the same seed, so they do not disturb those draws.
+
+\paragraph{Preliminary diagnosis.} Before the sweeps, a diagnosis looked for the reason why our implementation
+of the original scheme lost performance toward the end of training, and it fixed the configuration of the
+sweeps. It consists of 24 runs, all with \ac{FedAvg}, $K = 10$, seed 0, and 2000 episodes, each changing one
+or two options at a time. Appendix~\ref{apx:diagnosis} presents it.
+
+\paragraph{Implementation and execution.} The simulator and the agents are written in Python, with PyTorch
+\cite{paszke+19pytorch} for the networks. The environment follows the parallel interface of PettingZoo
+\cite{terry+21pettingzoo}, designed for agents that act at the same time. It computes the shared reward in
+every slot, and it hands each agent, separately, the reward from which it learns, so that every run is
+logged with the same measure. 191 automated tests check the implementation. Some compare each equation of the
+model with values computed by hand; others check properties that must always hold, for example that gossip
+on a graph in which everyone is a neighbor of everyone gives the same result as \ac{FedAvg}, that an isolated
+agent keeps its model, and that no aggregation touches the target networks. The sweeps ran on processors of
+Hypatia, the high-performance computing cluster of Universidad de los Andes, for a total of about 800 hours
+of computation. The tables and figures of Chapter~\ref{chap:results} are generated by a script directly from
+the logs of the runs. Appendix~\ref{apx:reproducibility} explains how to repeat the experiments.
+
+%%
 \section{Metrics}
 % Recompensa por episodio (medida principal), valor final y medidas de calidad de servicio, comportamiento, comunicación, consenso y aprendizaje.
 \label{sec:exp-metrics}
 
+\paragraph{Reward per episode.} The main measure is the shared reward (Equation~\ref{eq:sm-shared-reward})
+summed over the 200 slots of an episode. It sums up in a single number the three objectives of the problem:
+the rate of the \acp{CUE}, and the delay and the reliability of the pairs. Every method is measured with it,
+including those that learn from the individual reward and those that do not learn.
+
+\paragraph{Final value.} The final value of a measure in a run is its mean over the last 10\% of the episodes,
+episodes 1801 to 2000. In those episodes, exploration is already at its floor of 0.05, so the final value
+reflects what the method learned. For each method and each $K$, the tables give the mean and the standard
+deviation of the final values of the three seeds.
+
+\paragraph{Quality of service.} Three measures, averaged over the slots and the pairs:
+\begin{itemize}[nosep]
+  \item the \termdef{rate of the \acp{CUE}}: the mean rate of the 15 \acp{CUE}, in Mbps;
+  \item the \termdef{outage}: the percentage of slots in which a pair fails the reliability condition
+    ($\mu_k^t < 0$). A silent pair counts as in outage (Equation~\ref{eq:sm-margin}), so this measure mixes
+    two things: links that transmit without enough margin, and links that do not transmit;
+  \item the \termdef{delay}: the queue at the start of the slot divided by $\lambda$ (Little's law), in
+    milliseconds. It exceeds $\Dmax$ exactly when the queue exceeds $\Qmax$.
+\end{itemize}
+
+\paragraph{Behavior.} Three measures describe how the pairs use the spectrum: the \termdef{channels in use}
+(how many different channels the transmitting pairs occupy, on average), the \termdef{mean power} (as a
+fraction of $\Pmax$, counting silent slots as zero), and the percentage of slots in which a pair transmits on a
+channel on which another pair also transmits.
+
+\paragraph{Communication.} Per episode, the number of model transfers, the megabytes they move, and the load
+of the busiest node (Section~\ref{sec:pa-comm-cost}).
+
+\paragraph{Consensus.} The \termdef{weight dispersion}: the mean Euclidean distance between the weights of
+the online network of each agent and the average of the weights of all the agents. It is measured right
+before each round, at the same instants also for \ac{DTE}, and averaged over the episode. It is zero when all
+the agents have the same network, and it grows as their networks drift apart.
+
+\paragraph{Learning.} Three measures describe the reward curve of each run:
+\begin{itemize}[nosep]
+  \item the \termdef{improvement}: the final value minus the mean of the first 50 episodes;
+  \item the \termdef{speed}: the first episode at which the moving average over 50 episodes covers 90\% of
+    the improvement. This measure is used instead of a classic criterion of convergence because the curves
+    keep moving until the end (Section~\ref{sec:res-learning});
+  \item the \termdef{forgetting}: the best mean over a block of 200 consecutive episodes (1--200, 201--400,
+    and so on) minus the mean of the last block. It measures how much of what the method achieved is lost at
+    the end.
+\end{itemize}
+
+%%
 \section{How the methods are compared}
 % Comparaciones pareadas semilla por semilla, prueba de signos y lo que no se compara.
 \label{sec:exp-comparisons}
+
+\paragraph{Paired comparisons.} Since two runs with the same $K$ and the same seed see the same scenarios
+(Section~\ref{sec:exp-runs}), the methods are compared seed by seed. Besides the difference between the means,
+the tables give in how many of the three seeds one method beats the other. This separates the effect of the
+method from the luck of the geometry: a method that wins in all three seeds wins in three different sets of
+scenarios.
+
+\paragraph{Sign test.} To judge whether a count of wins could be due to chance, the sign test is used. If two
+methods were equally good, each paired comparison would be won by either of them with probability $1/2$, and
+the probability that one of them wins at least $x$ of $n$ independent comparisons would be
+\begin{equation}
+  \Pr(X \ge x) = \sum_{i = x}^{n} \binom{n}{i} \frac{1}{2^{n}}
+  \label{eq:exp-sign-test}
+\end{equation}
+where $X$ is the number of wins. For example, winning all 18 comparisons of six values of $K$ with three seeds
+has a probability of $2^{-18} \approx 4 \times 10^{-6}$ if the methods are equally good. The test assumes
+that the comparisons are independent, which here holds only approximately: runs with the same seed and
+different $K$ share the seed, although their scenarios differ. For this reason, these probabilities are read
+as indications of how unlikely a result is, not as formal proofs.
+
+\paragraph{What is not compared.} The learning curves are shown as the mean of the three seeds, smoothed with
+a moving average of 50 episodes. They show the dynamics, but the conclusions rest on the final values and on
+the paired comparisons. The results of the diagnosis, which use a single seed, serve only to choose the
+configuration, not to compare methods.

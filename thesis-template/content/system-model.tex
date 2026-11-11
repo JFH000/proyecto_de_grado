@@ -1,39 +1,413 @@
 \chapter{System model and problem formulation}
 \label{chap:system-model}
 
+This chapter describes the simulated world in which the agents learn: where the vehicles and the cellular
+users are, how the signals propagate, how the queues fill and empty, and what it means for a link to be
+reliable. With these elements, it states the resource allocation problem and turns it into a multi-agent
+learning problem, with observations, actions, and a reward. The model follows that of
+\citet{li+22fedmarl}. Where this thesis simplifies or corrects it, the text says so, and
+Section~\ref{sec:exp-differences} gathers all the differences.
+
+%%
 \section{Scenario}
 % Celda de 500 m de radio con la BS en el centro, 15 CUE con un canal de subida cada uno, K pares V2V (5 a 30), cómo se sortean las posiciones y quiénes son vecinos (300 m o menos).
+\label{sec:sm-scenario}
 
+The scenario is a circular cell with a radius of \SI{500}{\meter} and a \ac{BS} at its center
+(Figure~\ref{fig:sm-scenario}). The cell contains $M = 15$ \acp{CUE}, each with its own uplink channel of
+\SI{1}{\mega\hertz}: \ac{CUE} $m$ transmits to the \ac{BS} on channel $m$, with
+$m \in \Mset = \{1, \dots, M\}$. It also contains $K$ \ac{V2V} pairs, indexed by
+$k \in \Kset = \{1, \dots, K\}$; in the experiments, $K$ takes the values 5, 10, 15, 20, 25, and 30. The
+pairs have no channels of their own: each one must reuse the channel of some \ac{CUE}.
+
+Time advances in intervals of $\tau = \SI{1}{\milli\second}$, called \termdef{slots}. In each slot $t$, each
+pair $k$ chooses a channel $m_k^t \in \Mset$ and a transmit power $P_k^t$ among $N_p + 1 = 4$ levels:
+\begin{equation}
+  P_k^t \in \mathcal{P} = \Bigl\{ 0,\; \tfrac{1}{3}\Pmax,\; \tfrac{2}{3}\Pmax,\; \Pmax \Bigr\}
+  \label{eq:sm-power-levels}
+\end{equation}
+where $\Pmax = \SI{23}{dBm}$, about \SI{200}{\milli\watt}, is the maximum power. Choosing zero power means
+staying silent in that slot. The indicator $\rho_k^t[m]$ is 1 if pair $k$ chose channel $m$ in slot $t$, and
+0 otherwise. The \acp{CUE} always transmit, with a fixed power $P^{\mathrm{c}} = \SI{23}{dBm}$.
+
+The positions are drawn at the start of each \termdef{episode}, a block of 200 slots (\SI{0.2}{\second}).
+The \acp{CUE} and the \ac{V2V} transmitters are placed uniformly at random in the cell, and each \ac{V2V}
+receiver is placed at a random distance between 10 and \SI{50}{\meter} from its transmitter, in a random
+direction. The positions do not change during an episode: at \SI{30}{\meter\per\second}
+(\SI{108}{\kilo\meter\per\hour}), a vehicle moves \SI{6}{\meter} in \SI{0.2}{\second}, little compared with
+the distances that matter in the cell. Mobility appears instead as a change of geometry from one episode to
+the next.
+
+Two pairs are \termdef{neighbors} if their transmitters are at most \SI{300}{\meter} apart, the maximum
+communication radius that \citet{li+22fedmarl} take from the \ac{3GPP} \cite{3gpp16v2x}. The set of
+neighbors of pair $k$ is
+\begin{equation}
+  \Nset_k = \bigl\{ k' \in \Kset \setminus \{k\} : \lVert \bm{x}_{k'} - \bm{x}_k \rVert \le \SI{300}{\meter} \bigr\}
+  \label{eq:sm-neighbors}
+\end{equation}
+where $\bm{x}_k$ is the position of the transmitter of pair $k$ and $\lVert\cdot\rVert$ is the Euclidean
+distance. Since the positions change in every episode, so do the neighbors of each pair.
+
+\begin{figure}[tbp]
+  \centering
+  \begin{tikzpicture}[execute at begin picture={\linespread{1}\selectfont},
+      car/.style={draw, fill=cfedavg!40, minimum width=3.4mm, minimum height=2mm, inner sep=0pt,
+        rounded corners=0.6pt},
+      cue/.style={draw, fill=cumbral!45, minimum size=2mm, inner sep=0pt},
+      useful/.style={-{Stealth[length=1.4mm]}, semithick},
+      interf/.style={-{Stealth[length=1.4mm]}, semithick, dashed, red!70!black}]
+    % cell and base station
+    \draw[gray!60, thick] (0,0) circle (2.4);
+    \node[draw, thick, isosceles triangle, isosceles triangle apex angle=40, shape border rotate=90,
+      minimum height=5mm, fill=gray!25, inner sep=0pt] (bs) at (0,0) {};
+    \node[font=\scriptsize, below=0.3mm of bs] {\acs{BS}};
+    % cellular users
+    \node[cue] (c1) at (-1.65,1.28) {};
+    \node[cue] (c2) at (1.43,1.5) {};
+    \node[cue] (c3) at (-0.83,-1.8) {};
+    \node[cue] (c4) at (1.88,-0.9) {};
+    \foreach \c in {c1,c2,c3,c4} \draw[useful, cumbral!80!black] (\c) -- (bs);
+    % highlighted pair k and its neighborhood
+    \node[car, fill=cgossip!70] (tk) at (-0.75,0.3) {};
+    \node[car, fill=cgossip!70] (rk) at (-1.13,0.71) {};
+    \draw[useful] (tk) -- (rk);
+    \node[font=\scriptsize, left=0.3mm of rk] {pair $k$};
+    \draw[dashed, cgossip!80!black, thick] (tk) circle (1.44);
+    \draw[cgossip!80!black, {Stealth[length=1.2mm]}-{Stealth[length=1.2mm]}] (tk) -- ++(-125:1.44)
+      node[pos=0.55, left, font=\scriptsize] {\SI{300}{\meter}};
+    % other pairs
+    \node[car] (t1) at (0.3,0.9) {};    \node[car] (r1) at (0.6,1.16) {};   \draw[useful] (t1) -- (r1);
+    \node[car] (t2) at (-1.65,-0.38) {}; \node[car] (r2) at (-1.43,-0.71) {}; \draw[useful] (t2) -- (r2);
+    \node[car] (t3) at (1.35,-0.23) {};  \node[car] (r3) at (1.65,0.08) {};   \draw[useful] (t3) -- (r3);
+    \node[car] (t4) at (0.53,-1.5) {};   \node[car] (r4) at (0.83,-1.8) {};   \draw[useful] (t4) -- (r4);
+    % interference on the channel that pair k shares with CUE c1
+    \draw[interf] (tk) -- (bs);
+    \draw[interf] (c1) -- (rk);
+    % legend, below the cell
+    \begin{scope}[shift={(-2.6,-2.95)}, font=\scriptsize]
+      \node[cue] at (0,0) {};                 \node[right] at (0.15,0) {\acs{CUE}};
+      \node[car] at (0,-0.4) {};              \node[right] at (0.15,-0.4) {vehicle of a \acs{V2V} pair};
+      \draw[dashed, cgossip!80!black, thick] (-0.2,-0.8) -- (0.2,-0.8);
+      \node[right] at (0.25,-0.8) {neighborhood of pair $k$};
+      \draw[useful] (2.95,0) -- (3.35,0);     \node[right] at (3.4,0) {useful signal};
+      \draw[interf] (2.95,-0.4) -- (3.35,-0.4); \node[right] at (3.4,-0.4) {interference};
+    \end{scope}
+  \end{tikzpicture}
+  \caption[The simulated cell]{The simulated cell. The \acs{BS} is at the center; the \acsp{CUE} transmit
+    to it, and the \acs{V2V} pairs reuse their channels. Pair $k$ (in yellow) has two neighbors, the pairs
+    whose transmitters lie inside the circle of \SI{300}{\meter}. The dashed arrows show the interference
+    that appears when pair $k$ chooses the channel of the \acs{CUE} at the upper left.}
+  \label{fig:sm-scenario}
+\end{figure}
+
+%%
 \section{Channel model}
 % Las ganancias de todos los enlaces (gran y pequeña escala), la distancia mínima y qué ganancias conoce cada agente.
+\label{sec:sm-channel}
 
+Every channel gain is the product of a \termdef{large-scale fading} $\alpha$, which depends only on the
+distance, and a \termdef{small-scale fading} $g$, which is drawn anew in every slot:
+\begin{equation}
+  h = \alpha\, g, \qquad \alpha = \varphi\, \max(d, d_{\mathrm{min}})^{-e}, \qquad g \sim \mathrm{Exp}(1)
+  \label{eq:sm-channel}
+\end{equation}
+\begin{wherelist}
+  \item $d$ is the distance between the transmitter and the receiver, with a floor
+    $d_{\mathrm{min}} = \SI{1}{\meter}$ that avoids infinite gains;
+  \item $\varphi = \SI{-68.5}{dB}$ and $e = 1.61$ are the constants of the path-loss law;
+  \item $\mathrm{Exp}(1)$ is an exponential distribution with mean 1. This is Rayleigh fading: the
+    amplitude of the signal follows a Rayleigh distribution, and its power an exponential one.
+\end{wherelist}
+\citet{li+22fedmarl} use three path-loss laws, depending on whether there is a line of sight between the
+vehicles \cite[Eq.~4]{li+22fedmarl}. This thesis uses a single one, with the constants above.
+
+Five kinds of link appear in the model:
+\begin{itemize}[nosep]
+  \item $h_k^t[m]$: from the transmitter to the receiver of pair $k$, on channel $m$ (its own link);
+  \item $h_{m,\mathrm{B}}^t$: from \ac{CUE} $m$ to the \ac{BS};
+  \item $h_{k,\mathrm{B}}^t$: from the transmitter of pair $k$ to the \ac{BS};
+  \item $h_{m,k}^t$: from \ac{CUE} $m$ to the receiver of pair $k$;
+  \item $h_{k',k}^t$: from the transmitter of pair $k'$ to the receiver of pair $k$.
+\end{itemize}
+The own link has a different small-scale fading on each channel, because each channel occupies a different
+band of frequencies. The gains $h_k^t[m]$ and $h_{m,\mathrm{B}}^t$ are drawn at the start of the slot and
+are part of what the agent observes. The others are drawn when the outcome of the slot is computed, and no
+agent knows them.
+
+%%
 \section{Signal quality and rates}
 % SINR de cada CUE en la BS y de cada par V2V, y las tasas de Shannon que resultan.
+\label{sec:sm-sinr}
 
+The \ac{SINR} of \ac{CUE} $m$ at the \ac{BS} compares its signal with the noise plus the interference of all
+the pairs that chose its channel \cite[Eq.~5]{li+22fedmarl}:
+\begin{equation}
+  \gamma_m^{\mathrm{c},t} = \frac{P^{\mathrm{c}}\, h_{m,\mathrm{B}}^t}
+    {\sigma^2 + \sum_{k \in \Kset} \rho_k^t[m]\, P_k^t\, h_{k,\mathrm{B}}^t}
+  \label{eq:sm-sinr-cue}
+\end{equation}
+\begin{wherelist}
+  \item $\sigma^2 = \SI{-114}{dBm}$ is the noise power in \SI{1}{\mega\hertz};
+  \item the sum runs over the pairs that chose channel $m$, since $\rho_k^t[m] = 0$ for the others, and
+    each one adds its power times its gain toward the \ac{BS}.
+\end{wherelist}
+
+The \ac{SINR} of pair $k$, which transmits on channel $m = m_k^t$, compares the signal of its own
+transmitter with the noise, the interference of the \ac{CUE} that owns the channel, and that of the other
+pairs on the same channel \cite[Eq.~6]{li+22fedmarl}:
+\begin{equation}
+  \gamma_k^t = \frac{P_k^t\, h_k^t[m]}
+    {\sigma^2 + P^{\mathrm{c}}\, h_{m,k}^t + \sum_{k' \ne k} \rho_{k'}^t[m]\, P_{k'}^t\, h_{k',k}^t}
+  \label{eq:sm-sinr-v2v}
+\end{equation}
+Following \citet{li+22fedmarl}, an \ac{SINR} is written $\gamma$. It always carries a subscript, which
+distinguishes it from the discount factor $\gamma$ of Section~\ref{sec:bg-rl}.
+
+The rate of each link follows from its \ac{SINR} with the formula of Shannon
+(Equation~\ref{eq:bg-sinr}) \cite[Eq.~8]{li+22fedmarl}:
+\begin{equation}
+  R_m^{\mathrm{c},t} = W \log_2\bigl(1 + \gamma_m^{\mathrm{c},t}\bigr), \qquad
+  R_k^t = W \log_2\bigl(1 + \gamma_k^t\bigr)
+  \label{eq:sm-rates}
+\end{equation}
+where $W = \SI{1}{\mega\hertz}$ is the bandwidth of each channel. A silent pair has a rate of zero.
+
+%%
 \section{Queue and delay}
 % Dinámica de la cola de cada transmisor con llegada constante de 1 Mbps, el desborde y la relación con el retardo.
+\label{sec:sm-queue}
 
+Each \ac{V2V} transmitter receives data to send at a constant rate $\lambda = \SI{1}{Mbps}$, that is,
+$\tau\lambda = 1000$ bits per slot. The data it cannot send yet wait in its queue. If $Q_k^t$ is the queue at
+the start of slot $t$, the queue at the start of the next slot is \cite[Eq.~16]{li+22fedmarl}
+\begin{equation}
+  Q_k^{t+1} = \max\bigl(0,\; Q_k^t + \tau \lambda - \tau R_k^t \bigr)
+  \label{eq:sm-queue}
+\end{equation}
+\begin{wherelist}
+  \item $\tau\lambda$ are the bits that arrive during the slot, and $\tau R_k^t$ the bits that the link can
+    send during the slot;
+  \item the maximum with zero keeps the queue from becoming negative: if the link could send more than is
+    waiting, the queue is simply emptied.
+\end{wherelist}
+By Little's law (Section~\ref{sec:bg-v2v}), the delay of the data is $D_k^t = Q_k^t / \lambda$. The maximum
+tolerable delay of \ac{V2V} messages is $\Dmax = \SI{100}{\milli\second}$ \cite{3gpp16v2x}, so requiring
+$D_k^t \le \Dmax$ is the same as requiring that the queue not exceed
+$\Qmax = \lambda \Dmax = \num{100000}$ bits \cite[Sec.~II-C]{li+22fedmarl}.
+
+With these values, a pair that transmits usually empties its queue in the same slot, because its rate easily
+exceeds \SI{1}{Mbps}. The queue becomes a problem only when the pair stays silent: without transmitting, it
+accumulates 1000 bits per slot and reaches $\Qmax$ after 100 slots. This is the only cost that stops a pair
+that, to avoid interfering, would rather never transmit.
+
+%%
 \section{Reliability}
 % Probabilidad de interrupción (outage) con umbral de 5 dB y p_o = 0.1, y cómo se convierte en un umbral sobre la ganancia del enlace.
+\label{sec:sm-reliability}
 
+A \ac{V2V} link is in \termdef{outage} when its \ac{SINR} falls below the minimum needed to decode the
+messages, $\gamma_{\mathrm{o}} = \SI{5}{dB}$. Since the fast fading is random, outage cannot be ruled out
+completely. What is required is that its probability not exceed $p_{\mathrm{o}} = 0.1$
+\cite[Eq.~9]{li+22fedmarl}:
+\begin{equation}
+  \Pr\bigl(\gamma_k^t < \gamma_{\mathrm{o}}\bigr) \le p_{\mathrm{o}}
+  \label{eq:sm-outage}
+\end{equation}
+
+\citet{li+22fedmarl} turn this condition into one without probabilities, on the large-scale gains
+\cite[Eq.~15]{li+22fedmarl}:
+\begin{equation}
+  \frac{P_k^t\, \alpha_k}{\sigma^2 + I_k^t} \;\ge\;
+  \frac{\gamma_{\mathrm{o}}}{\ln\bigl(1/(1 - p_{\mathrm{o}})\bigr)} \eqqcolon \gth
+  \label{eq:sm-reliability}
+\end{equation}
+\begin{wherelist}
+  \item $\alpha_k$ is the large-scale gain of the own link of pair $k$;
+  \item $\textstyle I_k^t = P^{\mathrm{c}} h_{m,k}^t + \sum_{k' \ne k} \rho_{k'}^t[m]\, P_{k'}^t\, \alpha_{k',k}$ is
+    the interference: that of the \ac{CUE} of the channel plus that of the other pairs on the channel, the
+    latter with their large-scale gains $\alpha_{k',k}$;
+  \item $\gth$ is the \termdef{reliability threshold}. With $\gamma_{\mathrm{o}} = \SI{5}{dB}$, a factor of
+    3.16, and $p_{\mathrm{o}} = 0.1$, it is $\gth = 3.16 / \ln(1/0.9) \approx 30$, about \SI{14.8}{dB}.
+\end{wherelist}
+The idea behind this step is easiest to see if the interference is held fixed and only the fast fading $g$
+of the own link is random. The link then fails if
+$g < x \coloneqq \gamma_{\mathrm{o}} (\sigma^2 + I_k^t) / (P_k^t \alpha_k)$, which happens with
+probability $1 - e^{-x}$, since $g$ is exponential with mean 1. Requiring $1 - e^{-x} \le p_{\mathrm{o}}$
+is the same as requiring $x \le \ln(1/(1-p_{\mathrm{o}}))$, which is Equation~\ref{eq:sm-reliability}.
+\citet{li+22fedmarl} also account for the fading of the interfering pairs and, through an upper bound, reach
+the same condition. In words:
+to withstand fading, the link must operate with a margin. An average \ac{SINR} of \SI{5}{dB} is not
+enough; it needs about \SI{14.8}{dB}.
+
+To measure how close a pair is to meeting the condition, we define its \termdef{reliability margin}:
+\begin{equation}
+  \mu_k^t = \frac{P_k^t\, \alpha_k}{\sigma^2 + I_k^t} - \gth
+  \label{eq:sm-margin}
+\end{equation}
+If $\mu_k^t \ge 0$, the pair meets the condition in that slot; if $\mu_k^t < 0$, it does not. A silent pair
+has $\mu_k^t = -\gth$: staying silent counts as failing the reliability condition.
+
+%%
 \section{The optimization problem}
 % Maximizar la suma de las tasas de los CUE sujeta a tasa mínima, retardo máximo y confiabilidad de los pares, como lo plantean Li et al
+\label{sec:sm-problem}
 
+\citet{li+22fedmarl} state the goal of the system as maximizing the rate of the \acp{CUE} while guaranteeing
+the quality of service of everyone \cite[Eq.~19]{li+22fedmarl}. In the notation of this chapter:
+\begin{equation}
+  \begin{aligned}
+    \max_{\{m_k^t,\, P_k^t\}} \quad & \frac{1}{TM} \sum_{t=1}^{T} \sum_{m \in \Mset} R_m^{\mathrm{c},t} \\
+    \text{subject to} \quad & R_m^{\mathrm{c},t} \ge \Rmin, \quad m \in \Mset, \\
+      & Q_k^t \le \Qmax, \quad k \in \Kset, \\
+      & \mu_k^t \ge 0, \quad k \in \Kset, \\
+      & m_k^t \in \Mset,\; P_k^t \in \mathcal{P}, \quad k \in \Kset
+  \end{aligned}
+  \label{eq:sm-problem}
+\end{equation}
+\begin{wherelist}
+  \item the objective is the mean rate of the \acp{CUE}, averaged over a horizon of $T$ slots;
+  \item the constraints hold in every slot $t$. They ask, in order, for a minimum rate
+    $\Rmin = \SI{1}{Mbps}$ for each \ac{CUE}, a bounded delay for each pair, and a reliable link for each
+    pair, and they restrict each pair to one channel and one of the power levels.
+\end{wherelist}
+\citet{li+22fedmarl} also bound the time-averaged queue \cite[Eq.~18]{li+22fedmarl}. The reward that turns
+the problem into a learning problem (Section~\ref{sec:sm-shared-reward}) checks only the bound in every
+slot, so this thesis leaves the time-averaged one out.
+
+The constraints pull in opposite directions: protecting the \acp{CUE} calls for transmitting little, and
+meeting the delay and the reliability of the pairs calls for transmitting. Solving this problem centrally
+in every slot would require knowing all the channel gains of the cell, including those that no node
+observes. The queues also couple the slots: what a pair decides now changes the queue with which it starts
+the next slot. For these reasons, \citet{li+22fedmarl} cast it as a multi-agent reinforcement learning
+problem.
+
+%%
 \section{Formulation as a multi-agent learning problem}
 % Cada par V2V es un agente; juntos forman un Dec-POMDP.
+\label{sec:sm-formulation}
+
+Each \ac{V2V} pair is an agent: its transmitter observes, decides, and learns. Together, the agents form a
+\ac{Dec-POMDP} (Section~\ref{sec:bg-marl}). None of them observes the full state of the cell, all of them
+act at the same time, and, in the original scheme, all of them receive the same reward.
 
 \subsection{Observation}
 % El vector de 46 números que observa cada agente: su enlace en cada canal, cada CUE hacia la BS, vecinos en cada canal y su cola.
+\label{sec:sm-observation}
+
+In each slot, agent $k$ observes a vector of $3M + 1 = 46$ numbers \cite[Sec.~IV-A]{li+22fedmarl}:
+\begin{equation}
+  s_k^t = \bigl[\, \tilde{\bm{h}}_k^t,\; \tilde{\bm{h}}_{\mathrm{B}}^t,\; \bm{N}_k^{t-1},\;
+    Q_k^t / \Qmax \,\bigr]
+  \label{eq:sm-observation}
+\end{equation}
+\begin{wherelist}
+  \item $\tilde{\bm{h}}_k^t = (\tilde h_k^t[1], \dots, \tilde h_k^t[M])$ is the gain of its own link on each
+    channel, and $\tilde{\bm{h}}_{\mathrm{B}}^t = (\tilde h_{1,\mathrm{B}}^t, \dots,
+    \tilde h_{M,\mathrm{B}}^t)$ the gain of each \ac{CUE} toward the \ac{BS};
+  \item $\tilde h = (10 \log_{10} h + 100) / 10$ is a gain in decibels, centered at \SI{-100}{dB} and in
+    units of \SI{10}{dB}. This change of scale does not alter the problem; it only keeps the inputs of the
+    neural network near 1, which makes training easier;
+  \item $\bm{N}_k^{t-1} = (N_k^{t-1}[1], \dots, N_k^{t-1}[M])$, where $N_k^{t-1}[m]$ is the number of
+    neighbors of pair $k$ that chose channel $m$ in the previous slot;
+  \item $Q_k^t / \Qmax$ is the queue as a fraction of its maximum.
+\end{wherelist}
+According to \citet{li+22fedmarl}, an agent can obtain all this information with little signaling. The
+receiver estimates the gains of the own link and reports them to the transmitter, the \ac{BS} broadcasts
+the gains of the \acp{CUE}, the choices of the neighbors are known by sensing the channel or through the
+control channel between vehicles, and the queue is local.
 
 \subsection{Action}
 % La pareja canal y potencia: 15 canales por 4 niveles, 60 acciones.
+\label{sec:sm-action}
+
+The action of agent $k$ is the pair of channel and power, $a_k^t = (m_k^t, P_k^t) \in \Mset \times
+\mathcal{P}$. There are $M (N_p + 1) = 15 \times 4 = 60$ possible actions.
 
 \subsection{Shared reward}
 % La recompensa compartida que calcula la BS al final de cada slot: términos de tasa de los CUE, de colas y de confiabilidad de los pares, con sus pesos lambda.
 \label{sec:sm-shared-reward}
 
+\citet{li+22fedmarl} turn the three constraints of Equation~\ref{eq:sm-problem} into a single reward, which
+the \ac{BS} computes at the end of each slot and broadcasts to all the agents. In the version implemented in
+this thesis, the reward of slot $t$ is
+\begin{equation}
+  \begin{aligned}
+    r^t = {} & \lambda_1 \sum_{m \in \Mset} U\Bigl( \frac{R_m^{\mathrm{c},t} - \Rmin}{\Rmin} \Bigr) \\
+      & + \lambda_2 \sum_{k \in \Kset} U\Bigl( \frac{\Qmax - Q_k^t}{\Qmax} \Bigr) \\
+      & + \lambda_3 \sum_{k \in \Kset} U\Bigl( \frac{\mu_k^t}{\gth} \Bigr)
+  \end{aligned}
+  \label{eq:sm-shared-reward}
+\end{equation}
+with the utility function \cite[Eq.~23]{li+22fedmarl}
+\begin{equation}
+  U(x) =
+  \begin{cases}
+    x, & \text{if } x > 0 , \\
+    A, & \text{if } x \le 0
+  \end{cases}
+  \label{eq:sm-utility}
+\end{equation}
+\begin{wherelist}
+  \item the first term rewards each \ac{CUE} for how much its rate exceeds the minimum, and penalizes it if
+    the rate falls short;
+  \item the second rewards each pair for the free room left in its queue, and penalizes it if the queue
+    exceeds the maximum;
+  \item the third rewards each pair for its reliability margin, and penalizes it if the pair fails the
+    condition of Equation~\ref{eq:sm-reliability};
+  \item $U$ returns the margin when the constraint holds and a fixed penalty $A < 0$ when it does not; this
+    thesis uses $A = -10$;
+  \item $\lambda_1 = 0.3$, $\lambda_2 = 0.5$, and $\lambda_3 = 0.2$ are the weights of the terms
+    \cite[Table~III]{li+22fedmarl}.
+\end{wherelist}
+This is Equation~22 of \citet{li+22fedmarl}, with two changes. The first corrects the sign of the queue term.
+The printed equation uses $U(Q_k^t - \Qmax)$, which would reward an overflowing queue, against the constraint
+that the term stands for. The second divides each margin by its threshold, so that the three terms have no
+units and can be compared with $A$. In their original units (bits per second, bits, and linear \ac{SINR}),
+the term of the \acp{CUE} is of the order of $10^7$ per slot, that of the queues of the order of $10^5$, and
+that of reliability of the order of $10^2$. The reward would then reflect only the rate of the \acp{CUE},
+and the penalty $A$ would have no effect.
+
+The \termdef{reward per episode} is the sum of $r^t$ over the 200 slots of an episode. It is the main measure
+of Chapter~\ref{chap:results}, and every method is judged by it, whether or not it learns from it. Its scale
+helps to read the results. A \ac{CUE} with \SI{7.7}{Mbps} adds $0.3 \times 6.7 \approx 2$ per slot, so the
+15 \acp{CUE} add about 30 per slot, about 6000 per episode. By contrast, each pair that fails the
+reliability condition subtracts $0.2 \times 10 = 2$ per slot, and each overflowing queue subtracts
+$0.5 \times 10 = 5$. With many pairs, the penalties outweigh the rewards, and the reward per episode becomes
+negative.
+
+\paragraph{An example.} Consider a tiny network with one channel, its \ac{CUE}, and two pairs, A and B, that
+chose that channel. In one slot, the \ac{CUE} achieves \SI{5}{Mbps}, pair A transmits, and pair B stays
+silent:
+\begin{itemize}[nosep]
+  \item term of the \ac{CUE}: $0.3 \times U\bigl((5-1)/1\bigr) = 0.3 \times 4 = 1.2$;
+  \item pair A, with \num{20000} bits in its queue and a large-scale \ac{SINR} of 60 (margin
+    $60 - 30 = 30$): queue $0.5 \times U(0.8) = 0.4$ and reliability $0.2 \times U(30/30) = 0.2$;
+  \item pair B, with \num{100500} bits in its queue, more than the maximum, and silent: queue
+    $0.5 \times A = -5$ and reliability $0.2 \times A = -2$.
+\end{itemize}
+The shared reward of the slot is $1.2 + 0.4 + 0.2 - 5 - 2 = -5.2$, and both pairs receive it. Pair A, which
+acted well, receives the same bad news as pair B. Section~\ref{sec:pa-individual-reward} returns to this
+example to show what changes with the individual reward.
+
 \subsection{Objective of each agent}
 % Cada agente maximiza su retorno descontado; con la recompensa compartida debe descubrir qué parte del resultado depende de su propia acción.
+\label{sec:sm-objective}
+
+Each agent seeks the policy that maximizes its expected return (Equation~\ref{eq:bg-return}), with discount
+factor $\gamma$. With the shared reward, every agent receives the same $r^t$, and each one must discover,
+from that number alone, which part of the outcome depends on its own action.
 
 \subsection{What happens in a slot}
 % El orden de los eventos en un slot: observar, elegir, calcular SINR, tasas y colas, recibir la recompensa y aprender.
+\label{sec:sm-slot}
+
+To close, this is the order of events in each slot $t$:
+\begin{enumerate}[nosep]
+  \item Each agent observes $s_k^t$ (Equation~\ref{eq:sm-observation}).
+  \item Each agent chooses its channel and its power, without knowing what the others choose.
+  \item The environment draws the fading of the links that no one observes and computes the \acp{SINR}
+    (Equations~\ref{eq:sm-sinr-cue} and~\ref{eq:sm-sinr-v2v}), the rates (Equation~\ref{eq:sm-rates}), the
+    margins (Equation~\ref{eq:sm-margin}), and the queues of the next slot (Equation~\ref{eq:sm-queue}).
+  \item The environment computes the reward from which each agent learns.
+  \item The observable gains of the next slot are drawn, and each agent receives its new observation.
+\end{enumerate}

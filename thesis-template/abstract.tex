@@ -3,7 +3,28 @@
 
 \chapter{Abstract}
 
+Connected vehicles send safety messages directly to each other over vehicle-to-vehicle (V2V) links, which can
+reuse the uplink channels of the users of the cellular network at the cost of interfering with them. Choosing
+the channel and the transmit power of each pair of vehicles is a sequential decision problem that has been
+addressed with multi-agent reinforcement learning. In the scheme of Li et al.~\cite{li+22fedmarl}, the base
+station of the cell periodically averages the neural networks of all the agents (FedAvg), and all the agents
+learn from a single shared reward that the base station computes.
 
+This thesis revisits these two choices. First, it proposes a decentralized aggregation in which the base
+station takes no part in training: each vehicle averages its network only with those of the vehicles within
+\SI{300}{\meter} (gossip aggregation), and the groups of neighbors change with the positions of the
+vehicles. Second, it proposes an individual reward, which judges each agent by what its own action can
+change instead of by the sum of what all the agents do.
+
+We implemented the complete system and evaluated it in simulation with 5 to 30 pairs of vehicles, judging
+every method by the shared reward. The individual reward improved the result in almost every paired
+comparison, and with it, gossip beat FedAvg in the middle range of the number of pairs; without it, gossip
+brought no consistent gain. Together, the two changes beat our implementation of the original scheme in all
+paired comparisons. These gains have a limit: a simple fixed rule that uses only local information still
+beats every learning method.
+
+\medskip
+\noindent\textbf{Keywords:} vehicle-to-vehicle communications; radio resource allocation; multi-agent
+reinforcement learning; decentralized federated learning; gossip; reward design.
 
 \endinput
-

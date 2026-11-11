@@ -2,6 +2,38 @@
 
 \documentclass[american]{flag}
 
+% Compact layout: 9 pt type, tighter line spacing, wider text block, and two columns from the main matter
+% on (see \twocolumn after \mainmatter). To go back to the layout of the template, delete this block and the
+% \twocolumn line.
+\KOMAoptions{fontsize=9pt}
+\geometry{top=20mm, bottom=22mm, inner=18mm, outer=18mm, includehead, includemp=false,
+  marginparwidth=0pt, marginparsep=0pt, columnsep=7mm}
+\AtBeginDocument{\linespread{1.1}\selectfont}
+\usepackage{microtype}
+\setlength{\emergencystretch}{1.5em}
+\renewcommand{\dbltopfraction}{0.9}
+\renewcommand{\dblfloatpagefraction}{0.9}
+% Less space around floats, so that pages are not used up by gaps.
+\setlength{\textfloatsep}{9pt plus 2pt minus 2pt}
+\setlength{\dbltextfloatsep}{9pt plus 2pt minus 2pt}
+\setlength{\floatsep}{8pt plus 2pt minus 2pt}
+\setlength{\dblfloatsep}{8pt plus 2pt minus 2pt}
+\setlength{\intextsep}{8pt plus 2pt minus 2pt}
+\setlength{\abovecaptionskip}{6pt}
+% Smaller type and less space between the references.
+\renewcommand{\bibfont}{\small}
+\setlength{\bibsep}{1.5pt plus 0.5pt}
+% The table of contents in two columns, so that it fits on one page (same as in flag.cls, plus multicols).
+\makeatletter
+\renewcommand{\tableofcontents}{\@restonecolfalse
+  \if@twocolumn\@restonecoltrue\onecolumn\fi
+  \chapter*{\contentsname
+        \@mkboth{\uppercase{\contentsname}}{\uppercase{\contentsname}}}%
+  {\singlespace\begin{multicols}{2}\@starttoc{toc}\end{multicols}}\if@restonecol\twocolumn\fi}
+\makeatother
+% The index of terms is a section of the chapter "Terms and Acronyms", not a chapter of its own.
+\indexsetup{level=\section*, noclearpage, headers={{Terms and Acronyms}{Terms and Acronyms}}}
+
 \everymath{\displaystyle}
 
 \usepackage{mathtools}
@@ -9,6 +41,10 @@
 \usepackage{siunitx}
 \sisetup{group-separator={,}, group-minimum-digits=5, per-mode=symbol, detect-all}
 \usepackage{makecell}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\algrenewcommand\algorithmicrequire{\textbf{Input:}}
+\algrenewcommand{\algorithmiccomment}[1]{\hfill$\triangleright$\ \textit{#1}}
 \usetikzlibrary{positioning, arrows.meta, fit, backgrounds, calc, shapes.geometric, decorations.pathreplacing}
 
 \makeatletter
@@ -26,11 +62,18 @@
 \newcommand{\Nset}{\mathcal{N}}
 \newcommand{\argmax}{\operatorname*{arg\,max}}
 \newcommand{\argmin}{\operatorname*{arg\,min}}
+\newcommand{\Qmax}{Q^{\mathrm{max}}}
+\newcommand{\Rmin}{R^{\mathrm{min}}}
+\newcommand{\Pmax}{P^{\mathrm{max}}}
+\newcommand{\Dmax}{D^{\mathrm{max}}}
+\newcommand{\gth}{\Gamma} % reliability threshold, right-hand side of Eq. 15 of Li et al.
 
-\newenvironment{keyidea}
-  {\par\medskip\noindent\begingroup\linespread{1.25}\selectfont
-   \begin{tabular}{@{}p{0.97\linewidth}@{}}\toprule\textbf{Key idea.}\ }
-  {\\\bottomrule\end{tabular}\endgroup\par\medskip}
+% Colors of the methods (the same as in the results figures)
+\definecolor{cfedavg}{HTML}{2A78D6}
+\definecolor{cdte}{HTML}{EB6834}
+\definecolor{cgreedy}{HTML}{1BAF7A}
+\definecolor{cgossip}{HTML}{EDA100}
+\definecolor{cumbral}{HTML}{8A4FD6}
 
 \newenvironment{wherelist}
   {\par\noindent where\begin{itemize}[nosep, leftmargin=1.6em, label=\textendash]}
@@ -41,7 +84,8 @@
 \begin{document}
 
 \frontmatter
-\KOMAoptions{open=left}
+% Every chapter starts on the next page, left or right, so there are no blank pages.
+\KOMAoptions{open=any}
 \thispagestyle{empty}
 
 \include{title}
@@ -49,16 +93,20 @@
 \include{acknowledgements}
 \tableofcontents
 \listoffigures
-\KOMAoptions{open=right}
 
+% \mainmatter always moves to a right-hand page; here it only moves to the next page.
+\let\origcleardoubleoddpage\cleardoubleoddpage
+\let\cleardoubleoddpage\clearpage
 \mainmatter
+\let\cleardoubleoddpage\origcleardoubleoddpage
+\twocolumn
 \input{chapter-titlepage}
 \include{content/introduction}
 \include{content/background}
 \include{content/related-work}
 \include{content/system-model}
 \include{content/proposed-architecture}
-\include{content/implementation} % posible eliminar
+% \include{content/implementation} % posible eliminar
 \include{content/experimental-setup}
 \include{content/results}
 \include{content/conclusions}
@@ -67,16 +115,20 @@
 %Adding appendices if needed
 \appendix
 \include{appendix/appendix-a}
+\include{appendix/appendix-diagnosis}
 \include{appendix/appendix-b}
 \include{appendix/appendix-c}
 
 \backmatter
 \bibliography{bib/local,bib/writing}
 
+% The terms and the acronyms share one chapter, so that they fit on one page.
+\chapter*{Terms and Acronyms}
+\addcontentsline{toc}{chapter}{Terms and Acronyms}
+\markboth{Terms and Acronyms}{Terms and Acronyms}
 \printindex
-\addcontentsline{toc}{chapter}{List of Terms}
 \printindex[symbols]
-\include{acronym}
+\input{acronym}
 \end{document}
 
 \endinput

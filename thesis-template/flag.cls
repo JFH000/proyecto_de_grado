@@ -460,7 +460,7 @@
 
 \RequirePackage{imakeidx}
 \citeindextrue % ask natbib to include citations in the index
-\makeindex[title=List of Terms] % request makeidx package to build an index
+\makeindex[title=Terms] % request makeidx package to build an index
 \makeindex[name=symbols, title=List of Symbols, options=-s latex.ist -c, intoc, columns=2]
 
 

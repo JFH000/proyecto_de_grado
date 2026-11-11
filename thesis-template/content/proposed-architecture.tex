@@ -1,29 +1,396 @@
 \chapter{Proposed architecture}
 \label{chap:proposed-architecture}
 
+This chapter presents the three components of the learning system: the agent of each \ac{V2V} pair, the
+same in every method (Section~\ref{sec:pa-agent}); how the agents share what they learn, through \ac{FedAvg}
+at the \ac{BS} (Section~\ref{sec:pa-fedavg}) or through the gossip aggregation that this thesis proposes
+(Section~\ref{sec:pa-gossip}); and the reward from which each agent learns, shared or individual
+(Section~\ref{sec:pa-individual-reward}). It closes with the resulting methods
+(Section~\ref{sec:pa-methods}) and the communication cost of each form of aggregation
+(Section~\ref{sec:pa-comm-cost}).
+
+%%
 \section{The agent of each pair}
 % El agente D3QN de cada par: la red (dos capas ocultas de 128 neuronas y cabezas de duelo), la red objetivo, el buffer con PER, la exploración y el entrenamiento.
+\label{sec:pa-agent}
 
+Each \ac{V2V} pair has its own \ac{D3QN} agent (Section~\ref{sec:bg-rl}) with two neural networks of the
+same shape: the \termdef{online network}, with weights $\vtheta_k$, which decides and learns, and the target
+network, with weights $\vtheta_k^{-}$, which is used to compute the learning targets.
+
+\paragraph{The network.} The network takes the observation of 46 numbers (Equation~\ref{eq:sm-observation}),
+passes it through two hidden layers of 128 neurons with ReLU activation, and splits into two outputs
+(Figure~\ref{fig:pa-network}): the value of the state, $V(s)$, and the advantage of each of the 60 actions,
+$A(s, a)$. The dueling architecture \cite{wang+16dueling} combines them as
+\begin{equation}
+  Q(s, a) = V(s) + A(s, a) - \frac{1}{60} \sum_{a'} A(s, a')
+  \label{eq:pa-dueling}
+\end{equation}
+where subtracting the mean advantage makes the split between value and advantages unique. (The advantage
+$A(s, a)$ should not be confused with the penalty $A$ of Equation~\ref{eq:sm-utility}.) The network has
+\num{30397} weights, which take \num{121588} bytes in single precision, about \SI{0.12}{\mega\byte}. That is
+the size of a model each time it is transferred.
+
+\begin{figure}[tbp]
+  \centering
+  \begin{tikzpicture}[execute at begin picture={\linespread{1}\selectfont},
+      layer/.style={draw, thick, rounded corners=2pt, minimum height=8.5mm, minimum width=11.5mm,
+        align=center, font=\scriptsize, inner sep=1.5pt},
+      arrow/.style={-{Stealth[length=1.6mm]}, thick}]
+    \node[layer, fill=gray!10] (in) {Input\\46};
+    \node[layer, fill=cfedavg!12, right=2.8mm of in] (h1) {Hidden\\128};
+    \node[layer, fill=cfedavg!12, right=2.8mm of h1] (h2) {Hidden\\128};
+    \node[layer, fill=cgossip!18, above right=0.6mm and 4mm of h2] (v) {Value\\1};
+    \node[layer, fill=cgossip!18, below right=0.6mm and 4mm of h2] (a) {Advantages\\60};
+    \node[layer, fill=cumbral!12, right=17.5mm of h2] (q) {$Q$\\60};
+    \draw[arrow] (in) -- (h1);
+    \draw[arrow] (h1) -- (h2);
+    \draw[arrow] (h2) -- (v);
+    \draw[arrow] (h2) -- (a);
+    \draw[arrow] (v) -- (q);
+    \draw[arrow] (a) -- (q);
+  \end{tikzpicture}
+  \caption[The network of each agent]{The neural network of each agent, with the number of values in each
+    layer. The hidden layers use ReLU activation. The two outputs are combined according to
+    Equation~\ref{eq:pa-dueling}, and the chosen action is the one with the largest $Q$.}
+  \label{fig:pa-network}
+\end{figure}
+
+\paragraph{The memory.} Each agent stores its transitions
+$(s_k^t,\allowbreak a_k^t,\allowbreak r_k^t,\allowbreak s_k^{t+1})$ in its own
+prioritized replay buffer \cite{schaul+16per}, which holds \num{10000} transitions, that is, the last 50
+episodes. Transition $i$ is drawn with probability
+\begin{equation}
+  P(i) = \frac{p_i^{\omega}}{\sum_j p_j^{\omega}}, \qquad p_i = |\delta_i| + \epsilon_{\mathrm{p}}
+  \label{eq:pa-per}
+\end{equation}
+\begin{wherelist}
+  \item $\delta_i$ is the last \ac{TD} error of the transition, and $\epsilon_{\mathrm{p}} = 10^{-5}$ keeps
+    every transition drawable;
+  \item $\omega = 0.6$ sets how strongly the priorities count; with $\omega = 0$, sampling is uniform.
+\end{wherelist}
+A new transition enters with the highest priority in the buffer, so that it is used at least once. To
+correct the bias of this sampling, each drawn transition is weighted by
+$w_i \propto (N_{\mathcal{B}}\, P(i))^{-\beta}$, normalized so that the largest weight in the buffer is 1,
+where $N_{\mathcal{B}}$ is the number of stored transitions. The exponent $\beta$ grows linearly from 0.4 to 1
+over the training.
+
+\paragraph{Learning.} In each slot, after storing its transition, each agent draws a minibatch $\mathcal{D}$
+of 128 transitions from its buffer and takes one step of the Adam optimizer, with a learning rate of
+$10^{-3}$, on the loss
+\begin{equation}
+  \mathcal{L}(\vtheta_k) = \frac{1}{|\mathcal{D}|} \sum_{i \in \mathcal{D}} w_i\,
+    \ell\bigl( y_i - Q(s_i, a_i; \vtheta_k) \bigr)
+  \label{eq:pa-loss}
+\end{equation}
+\begin{wherelist}
+  \item $y_i$ is the target of double \ac{DQN} \cite{vanhasselt+16double}: the online network chooses the
+    next action and the target network evaluates it,
+    \begin{equation}
+      y_i = r_i + \gamma\, Q\bigl(s_i',\, \argmax_{a'} Q(s_i', a'; \vtheta_k);\; \vtheta_k^{-}\bigr)
+      \label{eq:pa-target}
+    \end{equation}
+    with discount factor $\gamma = 0.9$;
+  \item $\ell$ is the Huber loss \cite{huber64robust}: $\ell(x) = x^2/2$ if $|x| \le 1$, and
+    $\ell(x) = |x| - 1/2$ otherwise. It grows like the squared error for small errors and only linearly for
+    large ones.
+\end{wherelist}
+Learning starts as soon as the buffer holds 128 transitions. Every 400 learning steps, the target network
+copies the weights of the online network. The episodes are cut at 200 slots, but the problem has no natural
+end, so the target always includes the value of the next state.
+
+\paragraph{Exploration.} The agent follows an $\varepsilon$-greedy policy (Section~\ref{sec:bg-rl}). The
+value of $\varepsilon$ falls linearly from 1 to 0.05 during the first 60\% of training, that is, until
+episode 1200 of 2000, and then stays at 0.05.
+
+Section~\ref{sec:exp-differences} lists which of these choices differ from those of \citet{li+22fedmarl},
+and Appendix~\ref{apx:diagnosis} explains how the discount factor was chosen.
+Algorithm~\ref{alg:pa-training} sums up the whole training, which is the same for every method except in
+the aggregation step.
+
+\begin{algorithm}[tbp]
+  \caption{Training of the $K$ agents with periodic aggregation}
+  \label{alg:pa-training}
+  \begin{algorithmic}[1]
+    \Require form of aggregation (\acs{FedAvg}, gossip, or none); reward from which the agents learn
+      (shared or individual)
+    \State For each agent $k$: initialize $\vtheta_k$ at random, set $\vtheta_k^{-} \gets \vtheta_k$, and
+      create an empty buffer $\mathcal{B}_k$
+    \For{each episode $e = 1, \dots, 2000$}
+      \State Draw the positions and find the neighbors $\Nset_k$ of each pair
+      \For{each slot $t = 1, \dots, 200$}
+        \State Each agent $k$ observes $s_k^t$ and picks $a_k^t$ with its $\varepsilon$-greedy policy
+        \State The environment applies the actions and gives each agent $r_k^t$ and $s_k^{t+1}$
+        \For{each agent $k$}
+          \State Store $(s_k^t, a_k^t, r_k^t, s_k^{t+1})$ in $\mathcal{B}_k$ with the highest priority
+          \State Draw 128 transitions from $\mathcal{B}_k$ and take one Adam step on
+            Equation~\ref{eq:pa-loss}
+          \State Every 400 learning steps: $\vtheta_k^{-} \gets \vtheta_k$
+        \EndFor
+        \If{50 slots have passed since the last round}
+          \State Aggregate the online networks: \acs{FedAvg}, gossip (Algorithm~\ref{alg:pa-gossip}), or
+            nothing
+        \EndIf
+        \State Lower $\varepsilon$ according to the exploration schedule
+      \EndFor
+    \EndFor
+  \end{algorithmic}
+\end{algorithm}
+
+%%
 \section{Centralized aggregation: FedAvg}
 % El esquema de referencia: cada 50 slots la BS recibe los pesos de todos los agentes, los promedia ponderados por su experiencia y les devuelve el promedio.
+\label{sec:pa-fedavg}
 
+In the scheme of \citet{li+22fedmarl}, which this thesis uses as the reference, the \ac{BS} acts as the
+federated server. Every $N_{\mathrm{a}} = 50$ slots, that is, four times per episode, there is a round:
+\begin{enumerate}[nosep]
+  \item each agent sends the weights of its online network to the \ac{BS};
+  \item the \ac{BS} averages them with Equation~\ref{eq:bg-fedavg}, where $n_k$ is the number of transitions
+    with which agent $k$ trained since the last round;
+  \item the \ac{BS} sends the average $\vtheta_{\mathrm{g}}$ back to all the agents, and each one replaces
+    its online network with it.
+\end{enumerate}
+The target networks are not shared: each agent keeps its own. Since every agent trains on 128 transitions in
+every slot, all the $n_k$ are equal, and the average is a simple one. After each round, all the agents have
+exactly the same online network; between one round and the next, each one adjusts it with its own
+experience.
+
+%%
 \section{Decentralized aggregation by gossip}
 % La propuesta: en las mismas rondas, cada agente promedia su red solo con las de sus vecinos a 300 m o menos, sin pasar por la BS.
+\label{sec:pa-gossip}
+
+The aggregation that this thesis proposes takes the \ac{BS} out of learning. The rounds take place at the
+same instants as in \ac{FedAvg}, but each agent $k$ averages its network only with those of its neighbors
+$\Nset_k$, the pairs whose transmitters are at most \SI{300}{\meter} away
+(Equation~\ref{eq:sm-neighbors}). In each round,
+\begin{equation}
+  \vtheta_k \leftarrow \sum_{j \in \mathcal{G}_k} \frac{n_j}{\sum_{i \in \mathcal{G}_k} n_i}\;
+    \bar{\vtheta}_j , \qquad \mathcal{G}_k = \{k\} \cup \Nset_k
+  \label{eq:pa-gossip}
+\end{equation}
+\begin{wherelist}
+  \item $\bar{\vtheta}_j$ are the weights of the online network of agent $j$ just before the round;
+  \item $\mathcal{G}_k$ is the group formed by agent $k$ and its neighbors;
+  \item $n_j$ is, as in \ac{FedAvg}, the number of transitions with which agent $j$ trained since the last
+    round. Since all the $n_j$ are equal, each agent ends up with the simple average of its network and those
+    of its neighbors, the gossip rule of Equation~\ref{eq:bg-gossip}.
+\end{wherelist}
+Three details complete the definition. The rounds are synchronous: all the agents average the weights from
+before the round, so the result does not depend on the order in which they are processed. An agent with no
+neighbors keeps its network and transfers nothing. And, as in \ac{FedAvg}, the target networks are not
+shared. Algorithm~\ref{alg:pa-gossip} sums up one round, and Figure~\ref{fig:bg-fedavg-gossip} compares the
+two forms of aggregation.
+
+\begin{algorithm}[tbp]
+  \caption{One round of gossip aggregation}
+  \label{alg:pa-gossip}
+  \begin{algorithmic}[1]
+    \Require online networks $\vtheta_1, \dots, \vtheta_K$; transitions $n_k$ trained on since the last
+      round; neighbors $\Nset_k$; optional cap $S$
+    \State $\bar{\vtheta}_k \gets \vtheta_k$ for every $k$ \Comment{all average the old weights}
+    \For{each agent $k$}
+      \State $\mathcal{S}_k \gets \Nset_k$
+      \If{$S$ is set and $|\Nset_k| > S$}
+        \State $\mathcal{S}_k \gets$ $S$ neighbors drawn from $\Nset_k$ at random, without replacement
+      \EndIf
+      \If{$\mathcal{S}_k \ne \emptyset$}
+        \State Receive $\bar{\vtheta}_j$ from each $j \in \mathcal{S}_k$ \Comment{one transfer each}
+        \State $\mathcal{G} \gets \{k\} \cup \mathcal{S}_k$
+        \State $\textstyle\vtheta_k \gets \sum_{j \in \mathcal{G}} \bigl(n_j / \textstyle\sum_{i \in \mathcal{G}}
+          n_i\bigr)\, \bar{\vtheta}_j$
+      \EndIf
+    \EndFor
+    \State $n_k \gets 0$ for every $k$
+  \end{algorithmic}
+\end{algorithm}
 
 \subsection{Why averaging with neighbors makes sense}
 % Todos los pares tienen la misma observación, las mismas acciones y la misma forma de recompensa, así que una misma red les sirve a todos y compartir pesos transfiere experiencia entre vecinos.
+\label{sec:pa-gossip-why}
+
+Averaging the networks of different agents only makes sense if one network can serve all of them. Here it
+can: all the pairs have the same kind of observation, the same actions, and the same form of reward, and their
+positions are drawn in the same way. A policy that decides from the local observation serves, in principle,
+any pair. Sharing weights therefore gives each agent what the others learned in situations it did not live
+through, as in horizontal federated reinforcement learning (Section~\ref{sec:bg-fl}).
+
+The schemes differ in how close they bring the networks to each other. If $\bm{\Theta}$ is the matrix whose
+rows are the weights of the $K$ agents, a round of any of the three schemes can be written as
+$\bm{\Theta} \leftarrow \bm{W} \bm{\Theta}$, where row $k$ of $\bm{W}$ says with what weight each agent enters
+the new model of $k$:
+\begin{itemize}[nosep]
+  \item without aggregation (\ac{DTE}), $\bm{W}$ is the identity: nobody changes;
+  \item in \ac{FedAvg}, every entry of $\bm{W}$ is $1/K$: all the agents become equal;
+  \item in gossip, row $k$ is $1/(1 + |\Nset_k|)$ in the columns of $k$ and its neighbors, and zero
+    elsewhere: each agent comes closer to its neighbors, but not to the others.
+\end{itemize}
+Gossip thus lies between learning alone and forcing everyone to be equal. In one round, knowledge advances
+only one neighbor; but since the graph changes in every episode, over many rounds what each agent knows ends
+up reaching all the others (Section~\ref{sec:bg-dfl}). We call this aggregation \termdef{dynamic} because the
+groups that average are not fixed: the positions of the vehicles decide them anew in every episode.
+
+The aggregation needs no new information either. The neighborhood it uses is the same \SI{300}{\meter} one
+that already appears in the observation of each agent (Equation~\ref{eq:sm-observation}), and the models
+travel over the same direct link between vehicles that, according to \citet{li+22fedmarl}, already carries
+the channel choices of the neighbors.
 
 \subsection{Variant with at most \texorpdfstring{$S$}{S} neighbors}
 % Promediar en cada ronda con a lo sumo S vecinos elegidos al azar (siguiendo a Ge et al) para acotar la comunicación.
 \label{sec:pa-gossip-s}
 
+With many pairs, each vehicle has many neighbors, and communication grows fast (Section~\ref{sec:pa-comm-cost}).
+Following \citet{ge+24dfl}, the capped variant sets a maximum number $S$ of neighbors per round: if an agent
+has more than $S$ neighbors, it draws $S$ of them at random, without replacement, and averages only with
+those. The draw is repeated in every round, so over the rounds the agent ends up averaging with all its
+neighbors. With the cap, the relation is no longer symmetric: that agent $k$ takes the model of $j$ does not
+mean that $j$ takes the model of $k$. The experiments use $S = 2$ and $S = 3$.
+
+%%
 \section{Individual reward}
 % La recompensa propia de cada agente (su cola, la confiabilidad de su enlace y el CUE del canal que eligió) en lugar de la suma de todos, y qué alineación se sacrifica a cambio de que sea más fácil de aprender.
 \label{sec:pa-individual-reward}
 
+The shared reward (Equation~\ref{eq:sm-shared-reward}) adds up $M + 2K$ terms: one for each \ac{CUE} and two
+for each pair. The action of one agent directly changes very few of them: the term of the \ac{CUE} of the
+channel it chose, those of its own queue and its own reliability, and, if it shares the channel with other
+pairs, the reliability of those pairs. The rest of the sum depends on what the others do. From the point of
+view of each agent, that part is noise, and it grows with $K$: with 30 pairs, the shared reward has 75 terms.
+This is the problem of learnability described in Section~\ref{sec:bg-marl}.
+
+The individual reward that this thesis proposes judges each agent only by the terms that its action touches.
+The reward of agent $k$ in slot $t$ is
+\begin{equation}
+  \begin{aligned}
+    r_k^t = {} & \lambda_1\, U\Bigl( \frac{R_{m_k^t}^{\mathrm{c},t} - \Rmin}{\Rmin} \Bigr)
+      + \lambda_2\, U\Bigl( \frac{\Qmax - Q_k^{t+1}}{\Qmax} \Bigr) \\
+      & + \lambda_3\, U\Bigl( \frac{\mu_k^t}{\gth} \Bigr)
+  \end{aligned}
+  \label{eq:pa-individual-reward}
+\end{equation}
+\begin{wherelist}
+  \item the first term looks only at the \ac{CUE} of the channel $m_k^t$ that the agent chose, the user that
+    its transmission can harm. All the pairs on the same channel share this term;
+  \item the second looks only at its own queue, and measures it at the \emph{end} of the slot, $Q_k^{t+1}$
+    (Equation~\ref{eq:sm-queue}), instead of at its start;
+  \item the third looks only at its own reliability margin (Equation~\ref{eq:sm-margin});
+  \item $U$, $\lambda_1$, $\lambda_2$, $\lambda_3$, and $A$ are those of the shared reward.
+\end{wherelist}
+
+\paragraph{Why the queue at the end of the slot.} In the shared reward, the queue term uses $Q_k^t$, the queue
+with which the slot \emph{starts}, which the action of the slot can no longer change. If a pair stays silent
+in the slot in which its queue crosses the maximum, the penalty arrives one slot later, mixed with the
+consequences of another action. With $Q_k^{t+1}$, the penalty falls in the same slot as the action that
+caused it.
+
+\paragraph{The example, with the individual reward.} In the tiny network of
+Section~\ref{sec:sm-shared-reward}, both pairs received $-5.2$. With the individual reward, pair A receives
+$1.2 + 0.4 + 0.2 = 1.8$, and pair B receives $1.2 - 5 - 2 = -5.8$: each one receives the consequence of what it
+did. The queue at the end of the slot adds another difference. If pair B started the slot with \num{99500}
+bits, its queue term in the shared reward is $0.5 \times U(0.005) = 0.0025$: the pair stays silent, the queue
+overflows, and, in that slot, there is no penalty. With the individual reward, the queue at the end of the
+slot is \num{100500} bits, and the penalty of $-5$ arrives in the slot of the silence.
+
+\paragraph{What is gained and what is lost.} In the terms of Section~\ref{sec:bg-marl}, the individual reward
+is much more learnable than the shared one, because almost everything that moves it depends on the agent
+itself. In exchange, it is less aligned with the objective of the system: it does not count the interference
+that the agent causes to the other pairs on its channel, which the shared reward does count, through the
+reliability of those pairs. An agent could improve its reward by transmitting hard at the expense of the
+pairs on its channel. Whether the trade is worth it is an empirical question, which
+Section~\ref{sec:res-reward} answers.
+
+\paragraph{What information it needs.} The shared reward requires the \ac{BS} to know, in every slot, the queue
+and the margin of every pair. The individual reward uses the agent's own queue, its own margin, which its
+receiver helps it estimate, and the rate of the \ac{CUE} of its channel, which the \ac{BS} already knows and
+would have to broadcast. It is not completely local, but the vehicles no longer report anything to the
+\ac{BS}. It also changes only what the agents learn from: every method is still measured with the shared
+reward (Equation~\ref{eq:sm-shared-reward}).
+
+%%
 \section{Resulting methods}
 % Tabla de combinaciones de agregación y recompensa: el esquema original (FedAvg con recompensa compartida), la propuesta (gossip con recompensa individual) y las demás, que separan el efecto de cada cambio.
+\label{sec:pa-methods}
 
+Combining the form of aggregation with the reward gives the learning methods that this thesis compares
+(Table~\ref{tab:pa-methods}). The original scheme of \citet{li+22fedmarl} is \ac{FedAvg} with the shared
+reward, and the complete proposal is gossip with the individual reward. The other combinations separate the
+effect of each change.
+
+\begin{table}[tbp]
+  \centering
+  \footnotesize
+  \caption[Combinations of aggregation and reward]{Combinations of aggregation and reward that are
+    evaluated. All of them are measured with the shared reward of Equation~\ref{eq:sm-shared-reward}.}
+  \label{tab:pa-methods}
+  \begin{tabularx}{\linewidth}{@{}l >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X@{}}
+    \toprule
+    Aggregation & Shared reward & Individual reward \\
+    \midrule
+    None (\acs{DTE}) & control & control \\
+    \acs{FedAvg} at the \acs{BS} & original scheme & new reward only \\
+    Gossip, all neighbors & new aggregation only & \textbf{complete proposal} \\
+    Gossip, $S = 2$ or 3 & --- & proposal, bounded cost \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+%%
 \section{Communication cost}
 % Cómo se mide el costo (transferencias de modelos de 121 588 bytes y carga del nodo más cargado) y las fórmulas del costo de FedAvg y de gossip.
 \label{sec:pa-comm-cost}
+
+We count the cost of a form of aggregation as the number of \termdef{transfers}: each time the model of one
+node reaches another node counts as one. Each transfer moves \num{121588} bytes. Both the total and its
+distribution matter: the \termdef{load} of a node is the number of transfers in which it takes part, sending
+or receiving, and the busiest node is the first to saturate. Table~\ref{tab:pa-cost} gathers the expressions
+derived below.
+
+\paragraph{FedAvg.} In each round, every agent sends its model to the \ac{BS} and receives the average: $2K$
+transfers, all of them through the \ac{BS}, whose load grows linearly with the number of pairs.
+
+\paragraph{Gossip with all neighbors.} In each round, every agent receives the model of each of its
+neighbors, so the total is the sum of the degrees, $\textstyle\sum_k |\Nset_k|$. Since the neighbor relation is
+symmetric, each vehicle sends as many models as it receives, and its load is $2|\Nset_k|$; the busiest one is
+the one with the most neighbors. The total depends on how dense the network is. If $p$ is the probability that
+two vehicles drawn at random in the cell are at most \SI{300}{\meter} apart, each pair has, on average,
+$p(K-1)$ neighbors, and the total per round is about
+\begin{equation}
+  \sum_{k \in \Kset} |\Nset_k| \approx p\, K (K - 1)
+  \label{eq:pa-cost-gossip}
+\end{equation}
+which grows with the square of $K$. In a cell without edges, $p$ would be $(300/500)^2 = 0.36$; the edge of
+the cell lowers it, because vehicles near the edge have fewer possible neighbors. In the simulations,
+$p \approx 0.27$ (Section~\ref{sec:res-consensus}). Hence, with few pairs, gossip transfers less than
+\ac{FedAvg}, and with many, more; but no node takes part in every transfer.
+
+\paragraph{Gossip with at most $S$ neighbors.} Each agent receives at most $S$ models per round, so the total
+does not exceed $SK$: with $S = 2$, at most $2K$, the same as \ac{FedAvg}. Each vehicle also sends its model
+to the neighbors that drew it. On average, a vehicle sends as many models as it receives, so the mean load is
+at most $2S$; the busiest vehicle may be drawn by more neighbors, but its load no longer grows with the number
+of pairs (Section~\ref{sec:res-communication}).
+
+\begin{table}[tbp]
+  \centering
+  \small
+  \caption[Communication cost of each form of aggregation]{Communication cost per round of each form of
+    aggregation. Only \acs{FedAvg} goes through the \acs{BS}. An episode has four rounds, and each transfer
+    moves \num{121588} bytes.}
+  \label{tab:pa-cost}
+  \begin{tabularx}{\linewidth}{@{}l l >{\raggedright\arraybackslash}X@{}}
+    \toprule
+    Aggregation & Transfers & Busiest node (load) \\
+    \midrule
+    None (\acs{DTE}) & 0 & --- \\
+    \acs{FedAvg} & $2K$ & the \acs{BS} ($2K$) \\
+    Gossip & $\textstyle\sum_k |\Nset_k|$ & the vehicle with the most neighbors
+      ($\textstyle 2 \max_k |\Nset_k|$) \\
+    Gossip, $S$ & at most $SK$ & a vehicle (mean at most $2S$) \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+Two remarks complete the analysis. First, the count is conservative for gossip: over a wireless medium, a vehicle could broadcast its
+model once to all its neighbors, while here each reception counts as one transfer. Second, the transfers of
+\ac{FedAvg} use the links to the cellular network, and those of gossip the direct link between vehicles.
+Section~\ref{sec:res-communication} measures these costs in the simulations.

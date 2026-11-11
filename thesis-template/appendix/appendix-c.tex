@@ -1,13 +1,84 @@
 \chapter{Reproducibility}
+\label{apx:reproducibility}
 
-\section{Software}
-% Versiones de Python y de las bibliotecas usadas, y cómo instalarlas con uv.
+This appendix explains how to repeat the experiments.
+
+\lstdefinestyle{shell}{language=bash, basicstyle=\footnotesize\ttfamily, frame=lines, columns=fullflexible,
+  keepspaces=true, breaklines=true, numbers=none, xleftmargin=0pt, framexleftmargin=0pt,
+  aboveskip=4pt, belowskip=4pt}
 
 \section{Repository organization}
-% Qué hay en cada carpeta del repositorio: implementación, guiones para el clúster, cuadernos de análisis y la tesis.
+% Qué hay en cada carpeta del repositorio: implementación, guiones para el clúster, resultados y la tesis.
+
+\begin{description}[nosep, itemsep=2pt]
+  \item[\path{v2v/}] The implementation: the environment (\path{v2v_env/}); the agents, the two forms of
+    aggregation, and the fixed rules (\path{agents/}); the training programs, \path{main.py} for the learning
+    methods and \path{train_greedy.py} for the fixed rules; the analysis (\path{analysis.py},
+    \path{plots.py}); and the tests (\path{tests/}).
+  \item[\path{v2v/jobs/}] The scripts for the cluster (\path{*.sbatch}) and the options of each sweep
+    (\path{sweeps/}) and of each variant of the diagnosis (\path{diag_variants/}).
+  \item[\path{v2v/runs/}] One folder per sweep and value of $K$, with a \path{.csv} file per run and a
+    \path{.json} file with its configuration, machine, and duration (the diagnosis, in \path{diag/}).
+  \item[\path{Makefile}] The commands that submit the sweeps and bring the results back
+    (\texttt{make pull-runs}).
+  \item[\path{thesis-template/}] This document and the script that generates its tables and figures.
+\end{description}
 
 \section{Steps}
-% Comandos para instalar y probar, hacer una corrida, lanzar los barridos en el clúster y regenerar las tablas y figuras.
+% Versiones, instalación y pruebas; una corrida; los barridos en el clúster; las tablas, las figuras y el documento.
+
+\paragraph{Install and test.} The implementation uses Python~3.11 and the versions pinned in the lock file:
+PyTorch~2.6.0, PettingZoo~1.27.0, Gymnasium~1.3.0, NumPy~2.4.6, pandas~3.0.5, Matplotlib~3.11.1, and
+pytest~9.1.1. From the folder \path{v2v}, the package manager \texttt{uv} installs exactly those versions and
+runs the tests:
+\begin{lstlisting}[style=shell]
+uv sync --frozen
+uv run pytest
+\end{lstlisting}
+
+\paragraph{One run.} \looseness=-1 For example, the proposal with $K = 10$ and seed 0:
+\begin{lstlisting}[style=shell]
+uv run python main.py --aggregation gossip \
+    --num-v2v-pairs 10 --episodes 2000 --seed 0 \
+    --local-reward --reward-end-of-slot-queue \
+    --gamma 0.9 --output runs/propia/k10/gossip_seed0.csv
+\end{lstlisting}
+The other methods use \texttt{--aggregation fedavg} or \texttt{none} (\acs{DTE}); the shared reward drops
+\texttt{--local-reward} and \texttt{--reward-end-of-slot-queue}; the variant with $S = 2$ adds
+\texttt{--gossip-neighbors 2}. The fixed rules run with \path{train_greedy.py}: Greedy by default, and the
+threshold rule with \texttt{--policy umbral}.
+
+\paragraph{The sweeps.} \looseness=-1 On the cluster, from the root of the repository, each sweep is submitted with one command
+per method:
+\begin{lstlisting}[style=shell]
+make run-<method> SWEEP=propia RUN_ON=cpu
+\end{lstlisting}
+where the method is \texttt{fedavg}, \texttt{dte}, \texttt{gossip}, \texttt{greedy}, or \texttt{umbral} (the
+last two without \texttt{RUN\_ON}). The sweeps keep their names in the repository: \texttt{propia} (individual
+reward), \texttt{paper} (shared reward), and \texttt{propia-vecinos2} and \texttt{propia-vecinos3} (gossip with
+$S = 2$ and $S = 3$). Each command submits one job per value of $K$, with seeds 0, 1, and 2, and skips the runs
+that already have results. The diagnosis is submitted with \texttt{make run-diag DIAG\_SET=<set>}, where the set
+is a file of \path{diag_variants/}.
+
+\paragraph{The tables, the figures, and the document.} \looseness=-1 With the results in \path{v2v/runs/}, the script
+\path{scripts/generate_results.py} of the thesis generates all the figures (\path{figures/res_*.pdf}) and tables
+(\path{tables/res_*.tex}) of the results. It runs from the root of the repository with the Python environment of
+the implementation (on Windows, \path{Scripts/python.exe} instead of \path{bin/python}):
+\begin{lstlisting}[style=shell]
+v2v/.venv/bin/python \
+    thesis-template/scripts/generate_results.py
+\end{lstlisting}
+It stores what it reads in \path{scripts/_cache/}, which must be deleted if the runs change. Then
+\texttt{latexmk -pdf main.tex}, in the folder of the thesis, compiles this document.
 
 \section{Seeds}
 % Cómo la semilla de una corrida determina posiciones, desvanecimientos, pesos iniciales y elección de vecinos, para que todos los métodos vean los mismos escenarios.
+
+\looseness=-1 The seed $\varsigma$ of a run determines all its randomness, so two runs with the same seed
+see the same scenarios, whatever the method (Section~\ref{sec:exp-runs}). Episode $e$ draws its positions
+and its fading with the seed $10^6 \varsigma + e$, and agent $i$ draws its initial weights, its exploration, and
+its samples from the buffer with the seed $10^6 \varsigma + i$. The choice of neighbors of the capped variant and
+the tie-breaking of the fixed rules use generators of their own, derived from $\varsigma$. The exact results
+can still differ between a processor and a graphics card, or between machines (Appendix~\ref{apx:diagnosis}).
+
+\endinput

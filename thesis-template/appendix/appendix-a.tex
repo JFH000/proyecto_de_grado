@@ -1,2 +1,143 @@
 \chapter{Notation}
+\label{apx:notation}
 % Tabla de los símbolos del documento agrupados por tema, con la ecuación o sección en que se definen, y aclaración de las letras con dos usos.
+
+This appendix gathers the symbols of the document, grouped by topic, with the equation or section where each
+one is defined. Some letters have two uses, which the context distinguishes:
+\begin{itemize}[nosep]
+  \item $\gamma$ with a subscript is an \acs{SINR}; alone, it is the discount factor;
+  \item $\lambda$ alone is the arrival rate of data; with a subscript, it is a weight of the reward;
+  \item $A$ alone is the penalty of the reward; $A(s, a)$ is the advantage of an action;
+  \item $Q_k^t$ is a queue; $Q(s, a)$ is the value of an action;
+  \item $P_k^t$ is a transmit power; $P(i)$ is the probability of drawing transition $i$;
+  \item $p$ is the probability that two vehicles are neighbors; $p_i$ is the priority of transition $i$;
+  \item $W$ is the bandwidth of a channel; $\bm{W}$ is the mixing matrix of an aggregation round;
+  \item $e$ is the exponent of the path-loss law in Equation~\ref{eq:sm-channel} and the index of an episode
+    in Section~\ref{sec:exp-runs};
+  \item $n$ is the total amount of data in \acs{FedAvg} (Equation~\ref{eq:bg-fedavg}) and the number of
+    comparisons in the sign test (Equation~\ref{eq:exp-sign-test}).
+\end{itemize}
+
+\newcommand{\notationgroup}[2]{%
+  \par\medskip\noindent
+  {\footnotesize
+  \begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{1.75cm}
+      >{\raggedright\arraybackslash}X l@{}}
+    \multicolumn{3}{@{}l}{\textbf{#1}} \\
+    \toprule
+    Symbol & Meaning & Defined in \\
+    \midrule
+    #2
+    \bottomrule
+  \end{tabularx}}\par}
+
+\notationgroup{Scenario}{
+  $M$, $\Mset$ & Number and set of \acsp{CUE}, which are also the channels (15) & Sec.~\ref{sec:sm-scenario} \\
+  $m$ & A \acs{CUE}, or its channel & Sec.~\ref{sec:sm-scenario} \\
+  $K$, $\Kset$ & Number and set of \acs{V2V} pairs & Sec.~\ref{sec:sm-scenario} \\
+  $k$, $k'$ & \acs{V2V} pairs, which are also the agents & Sec.~\ref{sec:sm-scenario} \\
+  $t$, $\tau$ & Index of a slot and duration of a slot (\SI{1}{\milli\second}) & Sec.~\ref{sec:sm-scenario} \\
+  $T$ & Horizon of the optimization problem, in slots & Eq.~\ref{eq:sm-problem} \\
+  $m_k^t$ & Channel that pair $k$ chooses in slot $t$ & Sec.~\ref{sec:sm-scenario} \\
+  $\rho_k^t[m]$ & 1 if pair $k$ chose channel $m$ in slot $t$, and 0 otherwise & Sec.~\ref{sec:sm-scenario} \\
+  $P_k^t$, $\mathcal{P}$ & Transmit power of pair $k$ and set of possible levels & Eq.~\ref{eq:sm-power-levels} \\
+  $N_p$ & Number of nonzero power levels (3) & Eq.~\ref{eq:sm-power-levels} \\
+  $\Pmax$ & Maximum power of a pair (\SI{23}{dBm}) & Eq.~\ref{eq:sm-power-levels} \\
+  $P^{\mathrm{c}}$ & Power of the \acsp{CUE} (\SI{23}{dBm}) & Sec.~\ref{sec:sm-scenario} \\
+  $\bm{x}_k$ & Position of the transmitter of pair $k$ & Eq.~\ref{eq:sm-neighbors} \\
+  $\Nset_k$ & Neighbors of pair $k$: the pairs whose transmitters are at most \SI{300}{\meter} away
+    & Eq.~\ref{eq:sm-neighbors} \\
+}
+
+\notationgroup{Channel}{
+  $P$, $h$, $I$, $R$ & Power, gain, interference, and rate of a generic link & Eq.~\ref{eq:bg-sinr} \\
+  $h$, $\alpha$, $g$ & Gain of a link, its large-scale part, and its small-scale part & Eq.~\ref{eq:sm-channel} \\
+  $d$, $d_{\mathrm{min}}$ & Distance of a link and minimum distance (\SI{1}{\meter}) & Eq.~\ref{eq:sm-channel} \\
+  $\varphi$, $e$ & Constants of the path-loss law (\SI{-68.5}{dB} and 1.61) & Eq.~\ref{eq:sm-channel} \\
+  $h_k^t[m]$ & Gain of the own link of pair $k$ on channel $m$ & Sec.~\ref{sec:sm-channel} \\
+  $h_{m,\mathrm{B}}^t$, $h_{k,\mathrm{B}}^t$ & Gains toward the \acs{BS} from \acs{CUE} $m$ and from the
+    transmitter of pair $k$ & Sec.~\ref{sec:sm-channel} \\
+  $h_{m,k}^t$, $h_{k',k}^t$ & Gains toward the receiver of pair $k$ from \acs{CUE} $m$ and from the
+    transmitter of pair $k'$ & Sec.~\ref{sec:sm-channel} \\
+  $\alpha_k$, $\alpha_{k',k}$ & Large-scale gains of the own link and of an interfering link
+    & Eq.~\ref{eq:sm-reliability} \\
+  $\tilde h$ & Gain encoded for the neural network, $(10 \log_{10} h + 100) / 10$ & Eq.~\ref{eq:sm-observation} \\
+  $\bar h_k^t$ & Mean observed gain of the own link over the $M$ channels, in dB (threshold rule)
+    & Eq.~\ref{eq:exp-threshold} \\
+  $\sigma^2$ & Noise power in a channel (\SI{-114}{dBm}) & Eq.~\ref{eq:sm-sinr-cue} \\
+  $W$ & Bandwidth of a channel (\SI{1}{\mega\hertz}) & Eq.~\ref{eq:sm-rates} \\
+}
+
+\notationgroup{Signals, queues, and reliability}{
+  $\gamma_m^{\mathrm{c},t}$, $\gamma_k^t$ & \acs{SINR} of \acs{CUE} $m$ and of pair $k$
+    & Eqs.~\ref{eq:sm-sinr-cue}, \ref{eq:sm-sinr-v2v} \\
+  $R_m^{\mathrm{c},t}$, $R_k^t$ & Rates of \acs{CUE} $m$ and of pair $k$ & Eq.~\ref{eq:sm-rates} \\
+  $\Rmin$ & Minimum rate of each \acs{CUE} (\SI{1}{Mbps}) & Eq.~\ref{eq:sm-problem} \\
+  $\lambda$ & Arrival rate of data at each pair (\SI{1}{Mbps}) & Eq.~\ref{eq:sm-queue} \\
+  $Q_k^t$ & Queue of pair $k$ at the start of slot $t$, in bits & Eq.~\ref{eq:sm-queue} \\
+  $\Qmax$ & Maximum queue (\num{100000} bits) & Sec.~\ref{sec:sm-queue} \\
+  $D_k^t$, $\Dmax$ & Delay of pair $k$ and maximum delay (\SI{100}{\milli\second}) & Sec.~\ref{sec:sm-queue} \\
+  $\gamma_{\mathrm{o}}$, $p_{\mathrm{o}}$ & Minimum \acs{SINR} (\SI{5}{dB}) and maximum outage probability
+    (0.1) & Eq.~\ref{eq:sm-outage} \\
+  $I_k^t$ & Interference received by pair $k$ in the reliability condition & Eq.~\ref{eq:sm-reliability} \\
+  $\gth$ & Reliability threshold (about 30, \SI{14.8}{dB}) & Eq.~\ref{eq:sm-reliability} \\
+  $\mu_k^t$ & Reliability margin of pair $k$ & Eq.~\ref{eq:sm-margin} \\
+}
+
+\notationgroup{Rewards}{
+  $r^t$ & Shared reward of slot $t$ & Eq.~\ref{eq:sm-shared-reward} \\
+  $r_k^t$ & Individual reward of agent $k$ in slot $t$ & Eq.~\ref{eq:pa-individual-reward} \\
+  $U$, $A$ & Utility function and penalty ($-10$) & Eq.~\ref{eq:sm-utility} \\
+  $\lambda_1$, $\lambda_2$, $\lambda_3$ & Weights of the terms of the reward (0.3, 0.5, and 0.2)
+    & Eq.~\ref{eq:sm-shared-reward} \\
+}
+
+\notationgroup{Reinforcement learning}{
+  $s$, $a$, $r$ & State, action, and reward & Sec.~\ref{sec:bg-rl} \\
+  $o_k^t$ & Observation of agent $k$ in a \acs{Dec-POMDP} & Sec.~\ref{sec:bg-marl} \\
+  $s_k^t$ & Observation of agent $k$ in slot $t$ & Eq.~\ref{eq:sm-observation} \\
+  $N_k^{t-1}[m]$ & Neighbors of pair $k$ that chose channel $m$ in the previous slot
+    & Eq.~\ref{eq:sm-observation} \\
+  $a_k^t$ & Action of agent $k$ in slot $t$: a channel and a power & Sec.~\ref{sec:sm-action} \\
+  $G^t$, $\gamma$ & Return and discount factor & Eq.~\ref{eq:bg-return} \\
+  $Q(s, a)$ & Value of action $a$ in state $s$ & Sec.~\ref{sec:bg-rl} \\
+  $\varepsilon$ & Probability of choosing a random action ($\varepsilon$-greedy policy) & Sec.~\ref{sec:bg-rl} \\
+  $V(s)$, $A(s, a)$ & Value of a state and advantage of an action & Eq.~\ref{eq:pa-dueling} \\
+  $\vtheta_k$, $\vtheta_k^{-}$ & Weights of the online network and of the target network of agent $k$
+    & Sec.~\ref{sec:pa-agent} \\
+  $\mathcal{B}_k$, $N_{\mathcal{B}}$ & Replay buffer of agent $k$ and number of transitions it stores
+    & Sec.~\ref{sec:pa-agent} \\
+  $P(i)$, $p_i$ & Probability of drawing transition $i$ and its priority & Eq.~\ref{eq:pa-per} \\
+  $\delta_i$ & Last \acs{TD} error of transition $i$ & Eq.~\ref{eq:pa-per} \\
+  $\omega$, $\epsilon_{\mathrm{p}}$ & Exponent of the priorities (0.6) and minimum priority ($10^{-5}$)
+    & Eq.~\ref{eq:pa-per} \\
+  $w_i$, $\beta$ & Importance weight of transition $i$ and its exponent & Sec.~\ref{sec:pa-agent} \\
+  $\mathcal{L}$, $\mathcal{D}$ & Loss and minibatch (128 transitions) & Eq.~\ref{eq:pa-loss} \\
+  $y_i$ & Target of double \acs{DQN} & Eq.~\ref{eq:pa-target} \\
+  $\ell$ & Huber loss & Eq.~\ref{eq:pa-loss} \\
+}
+
+\notationgroup{Aggregation}{
+  $\vtheta_{\mathrm{g}}$ & Global model of \acs{FedAvg}, the average of the agents' networks & Eq.~\ref{eq:bg-fedavg} \\
+  $n_k$, $n$ & Transitions with which agent $k$ trained since the last round, and their total
+    & Eq.~\ref{eq:bg-fedavg} \\
+  $x_k$ & Value of node $k$ in a gossip algorithm & Eq.~\ref{eq:bg-gossip} \\
+  $N_{\mathrm{a}}$ & Slots between two aggregation rounds (50) & Sec.~\ref{sec:pa-fedavg} \\
+  $\bar{\vtheta}_j$ & Weights of the online network of agent $j$ just before a gossip round
+    & Eq.~\ref{eq:pa-gossip} \\
+  $\mathcal{G}_k$ & Group formed by agent $k$ and its neighbors & Eq.~\ref{eq:pa-gossip} \\
+  $S$ & Maximum number of neighbors per round in the capped variant & Sec.~\ref{sec:pa-gossip-s} \\
+  $\mathcal{S}_k$ & Neighbors with which agent $k$ averages in a round & Alg.~\ref{alg:pa-gossip} \\
+  $\bm{\Theta}$, $\bm{W}$ & Matrix of the weights of all the agents and mixing matrix of a round
+    & Sec.~\ref{sec:pa-gossip-why} \\
+  $p$ & Probability that two vehicles drawn at random are neighbors & Eq.~\ref{eq:pa-cost-gossip} \\
+}
+
+\notationgroup{Experiments}{
+  $e$ & Index of an episode & Sec.~\ref{sec:exp-runs} \\
+  $\varsigma$ & Seed of a run & Sec.~\ref{sec:exp-runs} \\
+  $X$, $x$, $n$ & Number of wins, wins observed, and number of comparisons in the sign test
+    & Eq.~\ref{eq:exp-sign-test} \\
+}
+
+\endinput

@@ -1,8 +1,107 @@
 \chapter{Detailed results}
 \label{apx:detailed-results}
 
+This appendix gathers the final values of all the measures, with the agents learning from the individual
+reward (Table~\ref{tab:apx-individual}) and from the shared reward (Table~\ref{tab:apx-shared}); the variability
+across seeds of the measures of quality of service and behavior (Table~\ref{tab:apx-variability}); and the
+computation time of each run (Table~\ref{tab:apx-time}). As in Chapter~\ref{chap:results}, the final value of a
+measure is its mean over the last 200 episodes, and the measures are those of Section~\ref{sec:exp-metrics}.
+Greedy and the threshold rule do not learn, so they give the same results in both sweeps.
+
+The columns of the first two tables are: the shared reward per episode (mean $\pm$ standard deviation across
+seeds); the mean rate of the \acsp{CUE}, in Mbps; the percentage of slots in outage, which includes the slots in
+which the pair stays silent; the mean delay, in milliseconds; the number of different channels used by the pairs
+that transmit; the mean power, as a fraction of the maximum; and the percentage of slots in which a pair
+transmits on a channel on which another pair also transmits.
+
+\newcommand{\detailedheader}{%
+  Method & $K$ & Reward & \makecell{\acs{CUE} rate\\(Mbps)} & \makecell{Outage\\(\%)}
+    & \makecell{Delay\\(ms)} & Channels & Power & \makecell{Shared\\channel (\%)} \\}
+
+% The two tables share one float, so that they fill a single page.
+\begin{table*}[tbp]
+  \centering
+  \linespread{1}\footnotesize
+  \caption[Detailed results with the individual reward]{Final values with the agents learning from the
+    individual reward: mean of the three seeds, and, for the reward, mean $\pm$ standard deviation.}
+  \label{tab:apx-individual}
+  \begin{tabular}{@{}lr r rrrrrr@{}}
+    \toprule
+    \detailedheader
+    \midrule
+    \tablerows{tables/res_appendix_individual.tex}
+    \bottomrule
+  \end{tabular}
+
+  \medskip
+  \caption[Detailed results with the shared reward]{Final values with the agents learning from the shared
+    reward, as in Table~\ref{tab:apx-individual}.}
+  \label{tab:apx-shared}
+  \begin{tabular}{@{}lr r rrrrrr@{}}
+    \toprule
+    \detailedheader
+    \midrule
+    \tablerows{tables/res_appendix_shared.tex}
+    \bottomrule
+  \end{tabular}
+\end{table*}
+
 \section{Variability across seeds}
-% Media y desviación estándar entre las tres semillas de cada medida de calidad de servicio y de comportamiento, por método y por K.
+
+Table~\ref{tab:apx-variability} gives the mean and the standard deviation across the three seeds of each measure
+of quality of service and behavior, with the individual reward.
+
+\newcommand{\measurerow}[1]{\multicolumn{6}{@{}l}{\textit{#1}} \\[0.3ex]}
+
+\begin{table*}[tbp]
+  \centering
+  \small
+  \caption[Variability across seeds of the measures of quality of service and behavior]{Mean $\pm$ standard
+    deviation across the three seeds of the measures of quality of service and behavior, with the agents
+    learning from the individual reward.}
+  \label{tab:apx-variability}
+  \begin{tabular}{@{}rrrrrr@{}}
+    \toprule
+    $K$ & Threshold rule & Greedy & \acs{DTE} & \acs{FedAvg} & Gossip \\
+    \midrule
+    \measurerow{Mean rate of the \acsp{CUE} (Mbps)}
+    \tablerows{tables/res_cue_rate.tex}
+    \midrule
+    \measurerow{Slots in outage, including the silent ones (\%)}
+    \tablerows{tables/res_outage.tex}
+    \midrule
+    \measurerow{Mean delay (ms)}
+    \tablerows{tables/res_delay.tex}
+    \midrule
+    \measurerow{Different channels used by the pairs that transmit}
+    \tablerows{tables/res_channels.tex}
+    \midrule
+    \measurerow{Mean power, as a fraction of the maximum}
+    \tablerows{tables/res_power.tex}
+    \bottomrule
+  \end{tabular}
+\end{table*}
 
 \section{Computation time}
-% Tiempo medio de una corrida de 2000 episodios, en horas, por método y por K.
+
+Table~\ref{tab:apx-time} gives the mean time of a run of 2000 episodes in the sweeps of the individual and the
+shared reward, with two processor cores per run. The runs were spread over 12 nodes of the cluster, so part of
+the differences between methods comes from the node on which each one ran. The fixed rules take minutes,
+because they do not train any network; the learning methods take hours, and their time grows with $K$, since
+every agent trains its own network in every slot.
+
+\begin{table*}[tbp]
+  \centering
+  \small
+  \caption[Computation time per run]{Mean time of a run, in hours.}
+  \label{tab:apx-time}
+  \begin{tabular}{@{}rrrrrr@{}}
+    \toprule
+    $K$ & Greedy & Threshold rule & \acs{DTE} & \acs{FedAvg} & Gossip \\
+    \midrule
+    \tablerows{tables/res_time.tex}
+    \bottomrule
+  \end{tabular}
+\end{table*}
+
+\endinput
