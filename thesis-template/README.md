@@ -1,4 +1,4 @@
-# MISIS/FLAG Thesis Template
+# FLAG Thesis Template
 
 This repository holds the basic definition and structure to write the bachelor/master/doctorate thesis document.
 
@@ -54,7 +54,7 @@ Note the use of the label definition in the `enumerate*` environment. Inline lis
 
 ### Source code definition
 
-Source code is defined using the `listings` package. A language specific environment is defined per programming language as part of the `misis.cls` file (see the file for an example)
+Source code is defined using the `listings` package. A language specific environment is defined per programming language as part of the `flag.cls` file (see the file for an example)
 
 ## Document Tools
 

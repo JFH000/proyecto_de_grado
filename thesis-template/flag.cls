@@ -19,7 +19,7 @@
 %   ***********************************
 %
 
-\ProvidesClass{misis}[2019/09/16 v1.0 Thesis class]
+\ProvidesClass{flag}[2019/09/16 v1.0 Thesis class]
 
 
 %   ***********************************
