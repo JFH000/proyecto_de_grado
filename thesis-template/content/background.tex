@@ -95,7 +95,7 @@ $\varepsilon = 1$ and lowers it gradually to a small floor.
 \label{sec:bg-marl}
 
 In \ac{MARL}, several agents act in the same environment, and the outcome for each of them depends on what
-all of them do \cite{gronauer+22marlsurvey,nguyen+20madrl}. In the \ac{V2V} problem, the \ac{SINR} of a pair
+all of them do \cite{gronauer+22marlsurvey}. In the \ac{V2V} problem, the \ac{SINR} of a pair
 depends on the channels and powers chosen by every other pair. At each step, each agent
 $k \in \Kset = \{1, \dots, K\}$ chooses its own action $a_k^t$, and the environment responds to the
 \termdef{joint action} of all of them. Each agent sees only part of the state, its \termdef{observation}
@@ -104,10 +104,10 @@ $o_k^t$. When the agents cooperate toward a common reward under these conditions
 
 Besides partial observability, the number of joint actions grows exponentially with the number of agents:
 with 10 agents of 60 actions each, there are $60^{10} \approx 6 \times 10^{17}$. Two further difficulties
-matter most for this thesis \cite{gronauer+22marlsurvey,nguyen+20madrl}:
+matter most for this thesis \cite{gronauer+22marlsurvey}:
 \begin{description}
   \item[Non-stationarity.] While one agent learns, the others change how they act. From the point of view
-    of each agent, the environment keeps changing its rules \cite{delafuente+24gametheory}.
+    of each agent, the environment keeps changing its rules.
   \item[Credit assignment.] When all the agents receive the same reward, none of them knows how much of it
     its own action caused. An agent may be rewarded for what another did, or punished for the mistake of
     another. It may even stop learning, because its own exploration would lower a reward that the others
@@ -148,7 +148,7 @@ Cooperative methods also differ in where training and execution happen \cite{ama
 \ac{CTDE}, the agents use information from all of them while they learn, but each one acts only on its own
 observation. In \ac{DTE}, each agent learns and acts on its own; the classic example is
 \termdef{independent learners}, which run their own Q-learning and ignore that the others exist
-\cite{tan93independent,claus+98dynamics}. In this thesis, \ac{DTE} also names the reference method in which
+\cite{tan93independent}. In this thesis, \ac{DTE} also names the reference method in which
 each agent learns alone and shares nothing. Federated learning lies in between: each agent still trains its
 own network from its own experience, but the agents periodically share and combine their weights.
 
@@ -218,8 +218,8 @@ of what the others learned in situations it did not live through. When all the a
 states and actions, the setting is called \termdef{horizontal federated reinforcement learning}. The setting
 of this thesis is close to it, with one difference: in the textbook case, each agent has its own copy of the
 environment, while here all the pairs share one environment and interfere with each other
-(Chapter~\ref{chap:related-work} returns to this point). Federation has also been proposed as a way to cope
-with non-stationarity \cite{xu+22mafrl}. Sharing does not always help, though: this thesis finds cases in
+(Chapter~\ref{chap:related-work} returns to this point). Sharing does not always help, though: this thesis
+finds cases in
 which averaging with all the agents is no better than not sharing at all (Section~\ref{sec:res-gossip}). In
 the scheme of \citet{li+22fedmarl}, the participants are the \ac{V2V} pairs, and the server is the \ac{BS}.
 

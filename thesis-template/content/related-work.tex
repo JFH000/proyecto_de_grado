@@ -110,7 +110,7 @@ agent learns and the others copy its model. Their scheme achieved a higher \ac{C
 cluster-based methods, and it converged faster and to a higher reward than the single-agent scheme.
 
 \section{Federated and multi-agent reinforcement learning}
-% Revisiones y aplicaciones de FRL y MARL federado: Qi et al. (2021), Myakala y Kamatala (2023) y Cheruiyot et al. (2025).
+% Compartir experiencia entre agentes (Tan, 1993) y FRL horizontal y vertical (Qi et al., 2021).
 \label{sec:rw-frl}
 
 When several agents face related tasks, each one sees only part of the possible experience. The question
@@ -136,17 +136,6 @@ The \ac{V2V} scheme of \citet{li+22fedmarl} does not fit neatly into either vari
 same observation and action spaces and exchange model parameters, as in horizontal \ac{FRL}. But they act
 in one shared environment and interfere with each other, as in vertical \ac{FRL}. The models being
 averaged therefore come from agents whose experiences are coupled, not independent.
-
-Two recent surveys address the tension between federation and decentralization directly.
-\citet{cheruiyot+25marlsurvey} distinguish three regimes of \ac{MARL}. In \ac{FRL}, a central server
-relays the communication and averages the parameters of the agents. In decentralized \ac{MARL},
-there is no server: agents exchange parameters peer to peer over a communication graph, which
-the survey also calls a gossip network, and they may maximize common or individual rewards. In
-noncooperative \ac{MARL}, each agent has its own reward and the agents play a game.
-\citet{myakala+23scalable} review scalable, decentralized multi-agent \ac{FRL}. They name communication
-efficiency, decentralized aggregation, and non-stationarity as the main challenges of scaling \ac{FRL} to
-many agents, and review remedies such as selective communication, compression, and peer-to-peer
-aggregation.
 
 \section{Serverless decentralized learning}
 % Consenso y gossip (Boyd et al., 2006; Olfati-Saber et al., 2007), gossip learning (Hegedus et al., 2019), D-PSGD (Lian et al., 2017), MARL con agentes en red (Zhang et al., 2018) y DFL con vecinos limitados (Ge et al., 2024).
@@ -196,7 +185,7 @@ Their convergence guarantees assume a linear approximation of the value function
 simulations with nonlinear approximation.
 
 \section{Reward design in multi-agent systems}
-% Recompensa compartida frente a recompensas por agente: agentes independientes (Tan, 1993; Claus y Boutilier, 1998), recompensas de diferencia (Wolpert y Tumer, 2001), alineación y sensibilidad (Agogino y Tumer, 2008), VDN (Sunehag et al., 2018) y críticos locales y global en V2X (Parvini et al., 2023).
+% Recompensa compartida frente a recompensas por agente: agentes independientes (Tan, 1993), recompensas de diferencia (Wolpert y Tumer, 2001), alineación y sensibilidad (Agogino y Tumer, 2008), VDN (Sunehag et al., 2018) y críticos locales y global en V2X (Parvini et al., 2023).
 \label{sec:rw-reward}
 
 \begin{table*}[tbp]
@@ -248,12 +237,10 @@ whole system did. Its weakness is credit assignment. From a shared reward, an ag
 the outcome came from its own action and how much from the actions of the others.
 \citet{gronauer+22marlsurvey} list credit assignment among the central challenges of deep \ac{MARL}.
 
-\paragraph{Independent and cooperative learners.} Early studies compared agents that learn on their own
-with agents that cooperate. \citet{tan93independent} found that, on tasks that require joint action,
+\paragraph{Independent and cooperative learners.} \citet{tan93independent} compared agents that learn on
+their own with agents that cooperate, and found that, on tasks that require joint action,
 agents that work as partners end up outperforming independent ones, although they learn more slowly at
-first. \citet{claus+98dynamics} compared, in cooperative games, Q-learners that ignore the other agents
-with learners that model joint actions. They showed that both kinds may settle on a suboptimal
-equilibrium, depending on the structure of the game and on how the agents explore.
+first.
 
 \paragraph{Rewards that are aligned and learnable.} \citet{wolpert+01collectives} studied how to choose
 the reward of each member of a collective so that members that maximize their own reward also make the
